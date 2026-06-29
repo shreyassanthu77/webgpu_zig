@@ -1,6 +1,12 @@
 .{
     .name = .webgpu_zig,
     .version = "0.0.1",
+    .dependencies = .{
+        .@"webgpu-headers-upstream" = .{
+            .url = "git+https://github.com/webgpu-native/webgpu-headers#a11ef4462405c4506ad7284e5b1edeff2750bb54",
+            .hash = "N-V-__8AAPbnCwB6Tt_IqYyVGVYYP7A3RJARj6YutO2ZEU6h",
+        },
+    },
     .minimum_zig_version = "0.16.0",
     .paths = .{""},
     .fingerprint = 0xaac553c88be2ba0e,

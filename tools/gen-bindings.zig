@@ -1,5 +1,9 @@
 const std = @import("std");
 
+fn generateBindings(gpa: std.mem.Allocator, bindings_json_str: []const u8, writer: *std.Io.Writer) !void {
+    _ = .{ gpa, bindings_json_str, writer };
+}
+
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
     var args = try init.minimal.args.iterateAllocator(arena);
@@ -31,8 +35,4 @@ pub fn main(init: std.process.Init) !void {
     var output_file_writer = output_file.writer(init.io, &output_file_writer_buffer);
     try generateBindings(init.gpa, bindings_json_str, &output_file_writer.interface);
     try output_file_writer.flush();
-}
-
-fn generateBindings(gpa: std.mem.Allocator, bindings_json_str: []const u8, writer: *std.Io.Writer) !void {
-    _ = .{ gpa, bindings_json_str, writer };
 }
