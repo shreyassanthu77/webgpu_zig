@@ -101,6 +101,13 @@ test Bool {
     try std.testing.expectEqual(false, Bool.Optional.undefined.truthy());
 }
 
+pub const Proc = *const fn () callconv(.c) void;
+
+extern fn wgpuGetProcAddress(procName: String) Proc;
+pub const getProcAddress = wgpuGetProcAddress;
+
 test {
-    std.testing.refAllDecls(@This());
+    _ = String;
+    _ = Bool;
+    _ = Proc;
 }
