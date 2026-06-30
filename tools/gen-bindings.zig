@@ -96,6 +96,75 @@ fn generateBindings(gpa: std.mem.Allocator, bindings_json_str: []const u8, write
         try writer.print("    _,\n", .{});
         try writer.print("}};\n\n", .{});
     }
+
+    for (json.structs) |struct_| {
+        _ = arena_alloc.reset(.retain_capacity);
+
+        try writer.writeAll(splitJoinNl(arena, struct_.doc, "\n/// ", "/// "));
+        try writer.print("pub const {s} = extern struct {{\n", .{
+            zid(arena, formatCase(arena, struct_.name, .pascal)),
+        });
+        if (struct_.members) |mems| for (mems) |member| {
+            if (member.type == .callback) continue;
+            try writer.writeAll(splitJoinNl(arena, member.doc, "\n    /// ", "    /// "));
+            const is_array = member.type == .array;
+            if (is_array) {
+                try writer.print("    {s}Count: usize,\n", .{
+                    zid(arena, formatCase(arena, member.name, .snake)),
+                });
+            }
+            try writer.print("    {s}: {s},\n", .{
+                zid(arena, formatCase(arena, member.name, .snake)),
+                zid(arena, formatParameterType(arena, member.type)),
+            });
+        };
+        if (struct_.free_members == true) {
+            const struct_name = zid(arena, formatCase(arena, struct_.name, .pascal));
+            try writer.print("    extern fn wgpu{s}FreeMembers(self: @This()) void;\n", .{struct_name});
+            try writer.print("    pub const free = wgpu{s}FreeMembers;\n", .{struct_name});
+        }
+        try writer.print("}};\n\n", .{});
+    }
+
+    for (json.objects) |object| {
+        _ = arena_alloc.reset(.retain_capacity);
+
+        try writer.writeAll(splitJoinNl(arena, object.doc orelse "", "\n/// ", "/// "));
+        try writer.print("pub const {s} = opaque {{\n", .{
+            zid(arena, formatCase(arena, object.name, .pascal)),
+        });
+
+        const object_name = zid(arena, formatCase(arena, object.name, .pascal));
+        try writer.print("    extern fn wgpu{s}Release(self: *@This()) void;\n", .{object_name});
+        try writer.print("    pub const release = wgpu{s}Release;\n", .{object_name});
+        try writer.print("}};\n\n", .{});
+    }
+}
+
+fn formatParameterType(allocator: std.mem.Allocator, ty: Schema.Type) []const u8 {
+    return switch (ty) {
+        .c_void => "void",
+        .bool => "bool",
+        .nullable_string => "String",
+        .string_with_default_empty => "String",
+        .out_string => "[*c][*c]const u8",
+        .uint16 => "u16",
+        .uint32 => "u32",
+        .uint64 => "u64",
+        .usize => "usize",
+        .int16 => "i16",
+        .int32 => "i32",
+        .float32 => "f32",
+        .nullable_float32 => "f32",
+        .float64 => "f64",
+        .float64_supertype => "f64",
+        .array => |child| std.fmt.allocPrint(allocator, "[*]const {s}", .{formatParameterType(allocator, child.*)}) catch @panic("OOM"),
+        .@"enum" => |child| formatCase(allocator, child, .pascal),
+        .@"struct" => |child| formatCase(allocator, child, .pascal),
+        .object => |child| std.fmt.allocPrint(allocator, "*{s}", .{formatCase(allocator, child, .pascal)}) catch @panic("OOM"),
+        .bitflag => |child| formatCase(allocator, child, .pascal),
+        .callback => |child| formatCase(allocator, child, .pascal),
+    };
 }
 
 const Case = enum {
