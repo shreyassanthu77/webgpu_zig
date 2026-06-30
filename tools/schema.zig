@@ -1,6 +1,7 @@
 const std = @import("std");
 
 bitflags: []const Bitflag,
+enums: []const Enum,
 
 const Bitflag = struct {
     name: []const u8,
@@ -44,5 +45,20 @@ const Bitflag = struct {
                 }
             }
         };
+    };
+};
+
+const Enum = struct {
+    name: []const u8,
+    namespace: ?[]const u8 = null,
+    doc: []const u8,
+    extended: ?bool = null,
+    entries: []const ?Entry,
+
+    const Entry = struct {
+        name: []const u8,
+        namespace: ?[]const u8 = null,
+        doc: []const u8,
+        value: ?u64 = null,
     };
 };

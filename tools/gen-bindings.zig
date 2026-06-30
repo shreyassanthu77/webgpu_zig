@@ -20,7 +20,7 @@ fn generateBindings(gpa: std.mem.Allocator, bindings_json_str: []const u8, write
         std.debug.assert(bitflag.extended != true);
 
         try writer.writeAll(splitJoinNl(arena, bitflag.doc, "\n/// ", "/// "));
-        try writer.print("pub const {s} = packed struct(u32) {{\n", .{formatCase(arena, bitflag.name, .pascal)});
+        try writer.print("pub const {s} = packed struct(u32) {{\n", .{zid(arena, formatCase(arena, bitflag.name, .pascal))});
         var idx: usize = 0;
         var has_combi_or_custom = false;
         for (bitflag.entries) |entry| {
@@ -33,7 +33,7 @@ fn generateBindings(gpa: std.mem.Allocator, bindings_json_str: []const u8, write
             } else {
                 try writer.writeAll(splitJoinNl(arena, entry.doc, "\n    /// ", "    /// "));
                 try writer.print("    {s}: bool = false,\n", .{
-                    formatCase(arena, entry.name, .snake),
+                    zid(arena, formatCase(arena, entry.name, .snake)),
                 });
                 idx += 1;
             }
@@ -49,17 +49,17 @@ fn generateBindings(gpa: std.mem.Allocator, bindings_json_str: []const u8, write
             if (entry.value) |value| {
                 try writer.writeAll(splitJoinNl(arena, entry.doc, "\n    /// ", "    /// "));
                 try writer.print("    pub const {s}: @This() = @bitCast(@as(u32, 0x{x:>8})),\n", .{
-                    formatCase(arena, entry.name, .snake),
+                    zid(arena, formatCase(arena, entry.name, .snake)),
                     value.u64,
                 });
             } else if (entry.value_combination) |combi| {
                 try writer.writeAll(splitJoinNl(arena, entry.doc, "\n    /// ", "    /// "));
                 try writer.print("    pub const {s}: @This() = .{{\n", .{
-                    formatCase(arena, entry.name, .snake),
+                    zid(arena, formatCase(arena, entry.name, .snake)),
                 });
                 for (combi) |name| {
                     try writer.print("        .{s} = true,\n", .{
-                        formatCase(arena, name, .snake),
+                        zid(arena, formatCase(arena, name, .snake)),
                     });
                 }
                 try writer.print("    }};\n", .{});
@@ -70,12 +70,39 @@ fn generateBindings(gpa: std.mem.Allocator, bindings_json_str: []const u8, write
 
         try writer.print("}};\n\n", .{});
     }
+
+    for (json.enums) |enum_| {
+        _ = arena_alloc.reset(.retain_capacity);
+        std.debug.assert(enum_.extended != true);
+
+        // special cased in prelude
+        if (std.mem.eql(u8, enum_.name, "optional_bool")) continue;
+
+        try writer.writeAll(splitJoinNl(arena, enum_.doc, "\n/// ", "/// "));
+        try writer.print("pub const {s} = enum(u32) {{\n", .{
+            zid(arena, formatCase(arena, enum_.name, .pascal)),
+        });
+        var idx: usize = 0;
+        for (enum_.entries) |maybe_entry| {
+            if (maybe_entry) |entry| {
+                try writer.writeAll(splitJoinNl(arena, entry.doc, "\n    /// ", "    /// "));
+                try writer.print("    {s} = 0x{x:0>8},\n", .{
+                    zid(arena, formatCase(arena, entry.name, .mixed_snake)),
+                    entry.value orelse idx,
+                });
+            }
+            idx += 1;
+        }
+        try writer.print("    _,\n", .{});
+        try writer.print("}};\n\n", .{});
+    }
 }
 
 const Case = enum {
     camel,
     pascal,
     snake,
+    mixed_snake,
 };
 fn formatCase(allocator: std.mem.Allocator, str: []const u8, case: Case) []const u8 {
     if (case == .snake) return str;
@@ -83,11 +110,20 @@ fn formatCase(allocator: std.mem.Allocator, str: []const u8, case: Case) []const
     var result = std.ArrayList(u8).initCapacity(allocator, str.len) catch @panic("OOM");
 
     var capitalize = case == .pascal;
+    var prev_len: usize = 0;
     while (it.next()) |part| {
+        if (part.len == 0) continue;
+
+        if (case == .mixed_snake) {
+            if (prev_len > 1) result.appendSliceAssumeCapacity("_");
+        }
+
         const i = result.items.len;
         result.appendSliceAssumeCapacity(part);
         if (capitalize) result.items[i] = std.ascii.toUpper(part[0]);
-        capitalize = true;
+
+        capitalize = case != .mixed_snake;
+        prev_len = part.len;
     }
     return result.toOwnedSlice(allocator) catch @panic("OOM");
 }
@@ -108,6 +144,63 @@ fn splitJoinNl(allocator: std.mem.Allocator, str: []const u8, new_separator: []c
     }
     result.appendSlice(allocator, "\n") catch @panic("OOM");
     return result.toOwnedSlice(allocator) catch @panic("OOM");
+}
+
+const zig_kws = std.StaticStringMap(void).initComptime(&.{
+    .{"align"},
+    .{"allowzero"},
+    .{"and"},
+    .{"anytype"},
+    .{"asm"},
+    .{"async"},
+    .{"await"},
+    .{"break"},
+    .{"callconv"},
+    .{"catch"},
+    .{"comptime"},
+    .{"const"},
+    .{"continue"},
+    .{"defer"},
+    .{"else"},
+    .{"enum"},
+    .{"errdefer"},
+    .{"error"},
+    .{"export"},
+    .{"extern"},
+    .{"false"},
+    .{"fn"},
+    .{"for"},
+    .{"if"},
+    .{"inline"},
+    .{"linksection"},
+    .{"noalias"},
+    .{"noinline"},
+    .{"nosuspend"},
+    .{"null"},
+    .{"opaque"},
+    .{"or"},
+    .{"pub"},
+    .{"resume"},
+    .{"return"},
+    .{"struct"},
+    .{"suspend"},
+    .{"switch"},
+    .{"test"},
+    .{"threadlocal"},
+    .{"true"},
+    .{"try"},
+    // .{"undefined"},
+    .{"union"},
+    .{"usingnamespace"},
+    .{"var"},
+    .{"volatile"},
+    .{"while"},
+});
+/// Escapes a string if it is a zig keyword or starts with a digit.
+fn zid(allocator: std.mem.Allocator, str: []const u8) []const u8 {
+    const should_escape = zig_kws.has(str) or std.ascii.isDigit(str[0]);
+    if (!should_escape) return str;
+    return std.fmt.allocPrint(allocator, "@\"{s}\"", .{str}) catch @panic("OOM");
 }
 
 pub fn main(init: std.process.Init) !void {
