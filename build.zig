@@ -12,15 +12,19 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/gen-bindings.zig"),
             .target = b.graph.host,
-            .optimize = .ReleaseFast,
+            .optimize = .Debug,
         }),
     });
     const run_bindings_generator = b.addRunArtifact(bindings_generator);
+    run_bindings_generator.has_side_effects = true;
     run_bindings_generator.addFileArg(webgpu_json);
-    const bindings_file = run_bindings_generator.addOutputFileArg("bindings.zig");
+    run_bindings_generator.addFileArg(b.path("src/bindings.zig"));
+    // const bindings_file = run_bindings_generator.addOutputFileArg("bindings.zig");
+    run_bindings_generator.addFileArg(b.path("src/prelude.zig"));
 
     const bindings = b.addModule("bindings", .{
-        .root_source_file = bindings_file,
+        // .root_source_file = bindings_file,
+        .root_source_file = b.path("src/bindings.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -35,6 +39,7 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+    bindings_test.step.dependOn(&run_bindings_generator.step);
 
     const test_step = b.step("test", "Run all tests");
     const run_bindings_test = b.addRunArtifact(bindings_test);
