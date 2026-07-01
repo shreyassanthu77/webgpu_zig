@@ -76,6 +76,11 @@ fn emitConstants(e: *Emit) !void {
         try e.w.doc(c.doc);
         const val: []const u8 = switch (c.value) {
             .u64 => |v| std.fmt.allocPrint(e.a, "{d}", .{v}) catch @panic("OOM"),
+            .max => |t| switch (t) {
+                .usize => "std.math.maxInt(usize)",
+                .u32 => "std.math.maxInt(u32)",
+                .u64 => "std.math.maxInt(u64)",
+            },
             .nan => "std.math.nan(f32)",
         };
         try e.w.line("pub const {s} = {s};", .{ e.snake(c.name), val });
@@ -307,17 +312,11 @@ fn emitFunctionLike(
     const all = list.items;
 
     const ret = e.returnInfo(callback, returns);
-    const needs_wrapper = params.anyNeedsWrapper(all) or ret.into;
 
     try e.w.doc(doc);
     try e.w.line("extern fn {s}({s}) {s};", .{ c_name, e.renderList(all, .extern_), ret.extern_ty });
 
-    if (!needs_wrapper) {
-        try e.w.line("pub const {s} = {s};", .{ zig_name, c_name });
-        try e.w.blank();
-        return;
-    }
-
+    try e.w.doc(doc);
     try e.w.open("pub inline fn {s}({s}) {s} {{", .{ zig_name, e.renderList(all, .wrapper), ret.wrapper_ty });
     if (ret.into)
         try e.w.line("return ({s}({s})).into();", .{ c_name, e.renderList(all, .forward) })

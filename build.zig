@@ -24,6 +24,21 @@ pub fn build(b: *std.Build) void {
         b.getInstallStep().dependOn(&usf.step);
     }
 
+    const docs_step = b.step("docs", "Generate docs");
+    const docs_lib = b.addLibrary(.{
+        .name = "webgpu-docs",
+        .root_module = b.createModule(.{
+            .root_source_file = bindings_file,
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    docs_step.dependOn(&b.addInstallDirectory(.{
+        .source_dir = docs_lib.getEmittedDocs(),
+        .install_subdir = "docs",
+        .install_dir = .prefix,
+    }).step);
+
     const test_step = b.step("test", "Run all tests");
 
     const test_bindings_file = bindings_gen.generateBindings(true);

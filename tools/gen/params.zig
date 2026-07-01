@@ -23,15 +23,6 @@ pub const Param = union(enum) {
     /// The trailing `callback_info` of an async function (identical in all modes).
     callback_info: struct { ty_name: []const u8 },
 
-    /// Whether this param differs between its extern and wrapper forms (i.e.
-    /// forces a `pub inline fn` wrapper rather than a plain `pub const` alias).
-    pub fn needsWrapper(self: Param) bool {
-        return switch (self) {
-            .string, .slice, .bytes => true,
-            .scalar, .callback_info => false,
-        };
-    }
-
     pub fn render(self: Param, w: *std.Io.Writer, mode: Mode) !void {
         switch (self) {
             .scalar => |s| switch (mode) {
@@ -85,11 +76,6 @@ pub fn renderList(params: []const Param, w: *std.Io.Writer, mode: Mode) !void {
         if (i != 0) try w.writeAll(", ");
         try p.render(w, mode);
     }
-}
-
-pub fn anyNeedsWrapper(params: []const Param) bool {
-    for (params) |p| if (p.needsWrapper()) return true;
-    return false;
 }
 
 fn isString(ty: Schema.Type) bool {

@@ -16,20 +16,24 @@ pub const Constant = struct {
 
     pub const Value = union(enum) {
         u64: u64,
-        nan: f32,
+        /// `maxInt` sentinel of the named integer type, kept symbolic so the
+        /// emitter can render `std.math.maxInt(...)` rather than a magic number.
+        max: enum { usize, u32, u64 },
+        /// A quiet f32 NaN (rendered as `std.math.nan(f32)`).
+        nan,
 
         pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !Value {
             const name_token: std.json.Token = try source.nextAllocMax(allocator, .alloc_if_needed, options.max_value_len.?);
             switch (name_token) {
                 .string => |s| {
                     if (std.mem.eql(u8, s, "usize_max")) {
-                        return .{ .u64 = std.math.maxInt(usize) };
+                        return .{ .max = .usize };
                     } else if (std.mem.eql(u8, s, "uint32_max")) {
-                        return .{ .u64 = std.math.maxInt(u32) };
+                        return .{ .max = .u32 };
                     } else if (std.mem.eql(u8, s, "uint64_max")) {
-                        return .{ .u64 = std.math.maxInt(u64) };
+                        return .{ .max = .u64 };
                     } else if (std.mem.eql(u8, s, "nan")) {
-                        return .{ .nan = std.zig.c_translation.builtins.nanf("") };
+                        return .nan;
                     } else {
                         return error.UnexpectedToken;
                     }
