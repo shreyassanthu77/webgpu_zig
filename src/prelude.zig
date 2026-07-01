@@ -104,7 +104,9 @@ test Bool {
 pub const Proc = *const fn () callconv(.c) void;
 
 extern fn wgpuGetProcAddress(procName: String) Proc;
-pub const getProcAddress = wgpuGetProcAddress;
+pub inline fn getProcAddress(procName: []const u8) Proc {
+    return wgpuGetProcAddress(String.from(procName));
+}
 
 test {
     _ = String;

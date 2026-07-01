@@ -551,7 +551,7 @@ const Generator = struct {
         }
     }
 
-    const Role = enum { plain, array, count, data, string };
+    const Role = enum { plain, array, count, data, string, payload, payload_size };
 
     /// True when the parameter type is one of the C `WGPUString` variants.
     fn isStringType(ty: Schema.Type) bool {
@@ -561,6 +561,21 @@ const Generator = struct {
     /// True when the string variant represents a nullable C string (data may be NULL).
     fn isNullableString(ty: Schema.Type) bool {
         return ty == .nullable_string;
+    }
+
+    /// True when the usize param name belongs to a payload+size pair (`size` or `<x>_size`).
+    fn isSizeName(name: []const u8) bool {
+        return std.mem.eql(u8, name, "size") or std.mem.endsWith(u8, name, "_size");
+    }
+
+    /// Returns the underlying ABI type if `returns` is Bool-like (i.e. `Bool` or
+    /// `Bool.Optional`), else null. Used to decide whether the inline wrapper should
+    /// convert the extern's `Bool`/`Bool.Optional` return into a `bool`/`?bool`.
+    fn boolReturnType(returns: ?Schema.ReturnType) ?Schema.Type {
+        const r = returns orelse return null;
+        if (r.type == .bool) return r.type;
+        if (r.type == .@"enum" and std.mem.eql(u8, r.type.@"enum", "Bool.Optional")) return r.type;
+        return null;
     }
 
     /// Element type of a slice, given the child element's `Type`.
@@ -621,6 +636,16 @@ const Generator = struct {
                     roles[i] = .array;
                     continue;
                 }
+                // payload + size pair: c_void pointer followed by a usize named `size`/`<x>_size`.
+                if (arg.type == .c_void and arg.pointer != null and i + 1 < n) {
+                    const next = all_args[i + 1];
+                    if (next.type == .usize and isSizeName(next.name)) {
+                        roles[i] = .payload;
+                        roles[i + 1] = .payload_size;
+                        i += 1; // skip the size arg
+                        continue;
+                    }
+                }
                 if (arg.type == .usize and std.mem.endsWith(u8, arg.name, "_count") and i + 1 < n) {
                     const next = all_args[i + 1];
                     if (next.pointer != null and next.type != .array) {
@@ -634,19 +659,31 @@ const Generator = struct {
         }
 
         const has_pair = blk: {
-            for (roles) |r| if (r == .array or r == .count or r == .string) break :blk true;
+            for (roles) |r| if (r == .array or r == .count or r == .string or r == .payload) break :blk true;
             break :blk false;
         };
+        const has_bool_ret = callback == null and boolReturnType(returns) != null;
+        const needs_wrapper = has_pair or has_bool_ret;
 
         // Doc comment.
         const doc_sep = std.fmt.allocPrint(self.arena, "\n{s}/// ", .{indent}) catch @panic("OOM");
         const doc_pfx = std.fmt.allocPrint(self.arena, "{s}/// ", .{indent}) catch @panic("OOM");
         try self.writer.writeAll(splitJoinNl(self.arena, doc, doc_sep, doc_pfx));
 
-        // Return type.
-        const ret: []const u8 = blk: {
+        // Return type as emitted in the extern fn signature (Bool stays Bool here).
+        const extern_ret: []const u8 = blk: {
             if (callback != null) break :blk "Future";
             if (returns) |r| break :blk self.returnType(r);
+            break :blk "void";
+        };
+        // Return type as emitted in the inline wrapper signature — Bool → bool, Bool.Optional → ?bool.
+        const wrapper_ret: []const u8 = blk: {
+            if (callback != null) break :blk "Future";
+            if (returns) |r| {
+                if (r.type == .bool) break :blk "bool";
+                if (r.type == .@"enum" and std.mem.eql(u8, r.type.@"enum", "Bool.Optional")) break :blk "?bool";
+                break :blk self.returnType(r);
+            }
             break :blk "void";
         };
 
@@ -696,6 +733,19 @@ const Generator = struct {
                         try self.writer.print(", {s}: {s}", .{ self.snakeName(d_arg.name), dt });
                         j += 1; // skip the data arg
                     },
+                    .payload => {
+                        const arg = all_args[j];
+                        if (!first) try self.writer.print(", ", .{});
+                        const is_const = arg.pointer.? == .immutable;
+                        const cnst = if (is_const) "const " else "";
+                        try self.writer.print("{s}: [*]{s}anyopaque", .{ self.snakeName(arg.name), cnst });
+                        first = false;
+                        // Emit the matching size param after.
+                        const sz_arg = all_args[j + 1];
+                        try self.writer.print(", {s}: usize", .{self.snakeName(sz_arg.name)});
+                        j += 1; // skip the size arg
+                    },
+                    .payload_size => {}, // handled by .payload
                     .plain => {
                         const arg = all_args[j];
                         const ty = self.paramType(arg);
@@ -711,10 +761,10 @@ const Generator = struct {
             try self.writer.print("callback_info: {s}", .{ct});
             first = false;
         }
-        try self.writer.print(") {s};\n", .{ret});
+        try self.writer.print(") {s};\n", .{extern_ret});
 
-        // --- pub const alias when there are no array/string args ---
-        if (!has_pair) {
+        // --- pub const alias when there are no array/string/payload args and no Bool return ---
+        if (!needs_wrapper) {
             try self.writer.print("{s}pub const {s} = {s};\n\n", .{ indent, zig_name, c_name });
             return;
         }
@@ -755,6 +805,16 @@ const Generator = struct {
                         first = false;
                         j += 1; // skip the data arg
                     },
+                    .payload => {
+                        const arg = all_args[j];
+                        const is_const = arg.pointer.? == .immutable;
+                        const cnst = if (is_const) "const " else "";
+                        if (!first) try self.writer.print(", ", .{});
+                        try self.writer.print("{s}: []{s}anyopaque", .{ self.snakeName(arg.name), cnst });
+                        first = false;
+                        j += 1; // skip the size arg (folded into the slice)
+                    },
+                    .payload_size => {}, // handled by .payload
                     .plain => {
                         const arg = all_args[j];
                         const ty = self.paramType(arg);
@@ -770,10 +830,15 @@ const Generator = struct {
             try self.writer.print("callback_info: {s}", .{ct});
             first = false;
         }
-        try self.writer.print(") {s} {{\n", .{ret});
+        try self.writer.print(") {s} {{\n", .{wrapper_ret});
 
         // inline body: forward to extern fn, unwrapping slices into .len/.ptr pairs.
-        try self.writer.print("{s}    return {s}(", .{ indent, c_name });
+        // For Bool-like returns, wrap the call in `( ... ).into()` to convert to bool/?bool.
+        if (has_bool_ret) {
+            try self.writer.print("{s}    return ({s}(", .{ indent, c_name });
+        } else {
+            try self.writer.print("{s}    return {s}(", .{ indent, c_name });
+        }
         first = true;
         if (self_type != null) {
             try self.writer.print("self", .{});
@@ -818,6 +883,15 @@ const Generator = struct {
                         first = false;
                         j += 1; // skip the data arg
                     },
+                    .payload => {
+                        const arg = all_args[j];
+                        const name = self.snakeName(arg.name);
+                        if (!first) try self.writer.print(", ", .{});
+                        try self.writer.print("{s}.ptr, {s}.len", .{ name, name });
+                        first = false;
+                        j += 1; // skip the size arg
+                    },
+                    .payload_size => {}, // handled by .payload
                     .plain => {
                         const arg = all_args[j];
                         if (!first) try self.writer.print(", ", .{});
@@ -832,7 +906,11 @@ const Generator = struct {
             try self.writer.print("callback_info", .{});
             first = false;
         }
-        try self.writer.print(");\n{s}}}\n\n", .{indent});
+        if (has_bool_ret) {
+            try self.writer.print(")).into();\n{s}}}\n\n", .{indent});
+        } else {
+            try self.writer.print(");\n{s}}}\n\n", .{indent});
+        }
     }
 
     fn emitMethod(self: *const Generator, obj_name: []const u8, method: Schema.Function) !void {
@@ -840,6 +918,26 @@ const Generator = struct {
         const zig_name = self.camelName(method.name);
         const self_type = std.fmt.allocPrint(self.arena, "*{s}", .{obj_name}) catch @panic("OOM");
         try self.emitFunctionLike("    ", c_name, zig_name, method.doc, method.args, method.callback, method.returns, self_type);
+
+        // Buffer.getMappedRange / getConstMappedRange: also emit slice-returning variants
+        // that cast the raw *anyopaque to a [u8]/[]const u8 of the requested size.
+        if (std.mem.eql(u8, obj_name, "Buffer")) {
+            if (std.mem.eql(u8, method.name, "get_mapped_range")) {
+                try self.writer.print(
+                    "    pub inline fn getMappedRangeSlice(self: *Buffer, offset: usize, size: usize) []u8 {{\n" ++
+                    "        return @as([*]u8, @ptrCast(@alignCast(wgpuBufferGetMappedRange(self, offset, size))))[0..size];\n" ++
+                    "    }}\n\n",
+                    .{},
+                );
+            } else if (std.mem.eql(u8, method.name, "get_const_mapped_range")) {
+                try self.writer.print(
+                    "    pub inline fn getConstMappedRangeSlice(self: *Buffer, offset: usize, size: usize) []const u8 {{\n" ++
+                    "        return @as([*]const u8, @ptrCast(@alignCast(wgpuBufferGetConstMappedRange(self, offset, size))))[0..size];\n" ++
+                    "    }}\n\n",
+                    .{},
+                );
+            }
+        }
     }
 
     fn emitAddRefRelease(self: *const Generator, obj_name: []const u8) !void {
