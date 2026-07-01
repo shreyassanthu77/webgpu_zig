@@ -430,7 +430,11 @@ const Generator = struct {
     fn emitChainedStruct(self: *const Generator) !void {
         try self.writer.print("pub const ChainedStruct = extern struct {{\n", .{});
         try self.writer.print("    next: ?*ChainedStruct = null,\n", .{});
-        try self.writer.print("    s_type: SType = .{s},\n", .{self.mixedSnakeName("undefined")});
+        // C `WGPUChainedStruct` has no INIT macro default for `sType`; JSON's SType
+        // enum is non-exhaustive (it has `_`) and has no `undefined` entry. Match C
+        // by giving the field no default and forcing callers to set it explicitly
+        // (which all extension structs do via their `chain` field default anyway).
+        try self.writer.print("    s_type: SType,\n", .{});
         try self.writer.print("}};\n\n", .{});
     }
 
@@ -488,7 +492,8 @@ const Generator = struct {
                 if (s_type_name) |stn| {
                     try self.writer.print("    chain: ChainedStruct = .{{ .next = null, .s_type = .{s} }},\n\n", .{self.mixedSnakeName(stn)});
                 } else {
-                    try self.writer.print("    chain: ChainedStruct = .{{ .next = null, .s_type = .{s} }},\n\n", .{self.mixedSnakeName("undefined")});
+                    // No matching SType enum entry — leave `s_type` zero/invalid.
+                    try self.writer.print("    chain: ChainedStruct = .{{ .next = null, .s_type = @enumFromInt(0) }},\n\n", .{});
                 }
             }
 
@@ -523,11 +528,36 @@ const Generator = struct {
                 const c_fn = self.cGlobalName(std.fmt.allocPrint(self.arena, "{s}_free_members", .{st.name}) catch @panic("OOM"));
                 try self.writer.print("    extern fn {s}(self: @This()) void;\n", .{c_fn});
                 try self.writer.print("    pub const free = {s};\n", .{c_fn});
+                try self.writer.print("\n", .{});
             }
+
+            try self.emitStructChainHelpers(st);
 
             try self.writer.print("}};\n\n", .{});
         }
     }
+
+    /// Emits a parent-descriptor converter on extension structs. Removes the need
+/// for `@ptrCast(@alignCast(...))` at call sites by returning a fully-wired
+/// parent struct whose `next_in_chain` points back at this extension's
+/// `chain` field. Only emitted when the extension extends exactly one struct
+/// (JSON `extends` is a one-element array); produces a method named after the
+/// parent (e.g. `surfaceDescriptor()` for SurfaceSource* types).
+fn emitStructChainHelpers(self: *const Generator, st: Schema.Struct) !void {
+    if (st.type != .extension) return;
+    if (st.extends) |parents| {
+        if (parents.len == 1) {
+            const parent_pascal = self.pascalName(parents[0]);
+            const parent_camel = self.camelName(parents[0]);
+            try self.writer.print(
+                "\n    pub inline fn {s}(self: *const @This()) {s} {{\n" ++
+                "        return .{{ .next_in_chain = @constCast(&self.chain) }};\n" ++
+                "    }}\n",
+                .{ parent_camel, parent_pascal },
+            );
+        }
+    }
+}
 
     fn emitObjects(self: *const Generator) !void {
         for (self.json.objects) |obj| {
@@ -925,14 +955,14 @@ const Generator = struct {
             if (std.mem.eql(u8, method.name, "get_mapped_range")) {
                 try self.writer.print(
                     "    pub inline fn getMappedRangeSlice(self: *Buffer, offset: usize, size: usize) []u8 {{\n" ++
-                    "        return @as([*]u8, @ptrCast(@alignCast(wgpuBufferGetMappedRange(self, offset, size))))[0..size];\n" ++
+                    "        return @as([*]u8, @ptrCast(wgpuBufferGetMappedRange(self, offset, size)))[0..size];\n" ++
                     "    }}\n\n",
                     .{},
                 );
             } else if (std.mem.eql(u8, method.name, "get_const_mapped_range")) {
                 try self.writer.print(
                     "    pub inline fn getConstMappedRangeSlice(self: *Buffer, offset: usize, size: usize) []const u8 {{\n" ++
-                    "        return @as([*]const u8, @ptrCast(@alignCast(wgpuBufferGetConstMappedRange(self, offset, size))))[0..size];\n" ++
+                    "        return @as([*]const u8, @ptrCast(wgpuBufferGetConstMappedRange(self, offset, size)))[0..size];\n" ++
                     "    }}\n\n",
                     .{},
                 );

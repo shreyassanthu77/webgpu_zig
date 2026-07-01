@@ -113,7 +113,7 @@ pub const Struct = struct {
     free_members: ?bool = null,
     members: ?[]const Parameter = null,
 
-    const StructType = enum {
+    pub const StructType = enum {
         extensible,
         extensible_callback_arg,
         extension,
