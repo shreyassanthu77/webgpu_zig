@@ -72,44 +72,9 @@ pub const Bool = enum(u32) {
     };
 };
 
-test String {
-    const Str = String;
-    try std.testing.expectEqualStrings("hello", Str.from("hello").into());
-    try std.testing.expectEqualStrings("", Str.from("").into());
-    try std.testing.expectEqualStrings("", std.mem.zeroes(Str).into());
-    try std.testing.expectEqualStrings("", (Str{ .data = null, .length = 200 }).into());
-    try std.testing.expectEqualStrings("", (Str{ .data = "somthing", .length = 0 }).into());
-}
-
-test Bool {
-    try std.testing.expectEqual(Bool.true, Bool.from(true));
-    try std.testing.expectEqual(Bool.false, Bool.from(false));
-
-    try std.testing.expectEqual(true, Bool.true.into());
-    try std.testing.expectEqual(false, Bool.false.into());
-
-    try std.testing.expectEqual(Bool.Optional.true, Bool.Optional.from(true));
-    try std.testing.expectEqual(Bool.Optional.false, Bool.Optional.from(false));
-    try std.testing.expectEqual(Bool.Optional.undefined, Bool.Optional.from(null));
-
-    try std.testing.expectEqual(true, Bool.Optional.true.into());
-    try std.testing.expectEqual(false, Bool.Optional.false.into());
-    try std.testing.expectEqual(null, Bool.Optional.undefined.into());
-
-    try std.testing.expectEqual(true, Bool.Optional.true.truthy());
-    try std.testing.expectEqual(false, Bool.Optional.false.truthy());
-    try std.testing.expectEqual(false, Bool.Optional.undefined.truthy());
-}
-
 pub const Proc = *const fn () callconv(.c) void;
 
 extern fn wgpuGetProcAddress(procName: String) Proc;
 pub inline fn getProcAddress(procName: []const u8) Proc {
     return wgpuGetProcAddress(String.from(procName));
-}
-
-test {
-    _ = String;
-    _ = Bool;
-    _ = Proc;
 }

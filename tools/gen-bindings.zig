@@ -3,7 +3,7 @@ const log = std.log.scoped(.gen_bindings);
 
 const Schema = @import("schema.zig");
 
-fn generateBindings(gpa: std.mem.Allocator, bindings_json_str: []const u8, writer: *std.Io.Writer) !void {
+fn generateBindings(gpa: std.mem.Allocator, bindings_json_str: []const u8, writer: *std.Io.Writer, emit_abi_checks: bool) !void {
     const json_res = try std.json.parseFromSlice(Schema, gpa, bindings_json_str, .{
         .duplicate_field_behavior = .@"error",
         .ignore_unknown_fields = true,
@@ -19,6 +19,7 @@ fn generateBindings(gpa: std.mem.Allocator, bindings_json_str: []const u8, write
         .arena = arena,
         .json = json,
         .writer = writer,
+        .emit_abi_checks = emit_abi_checks,
     };
 
     try gen.emitConstants();
@@ -37,6 +38,7 @@ const Generator = struct {
     arena: std.mem.Allocator,
     json: Schema,
     writer: *std.Io.Writer,
+    emit_abi_checks: bool,
 
     // --- lookups ---
 
@@ -302,7 +304,7 @@ const Generator = struct {
                 if (entry.value != null or entry.value_combination != null) {
                     // It's a pub const inside the bitflag struct.
                     const type_name = self.pascalName(bitflag_name);
-                    return std.fmt.allocPrint(self.arena, "{s}.{s}", .{type_name, self.snakeName(entry_name)}) catch @panic("OOM");
+                    return std.fmt.allocPrint(self.arena, "{s}.{s}", .{ type_name, self.snakeName(entry_name) }) catch @panic("OOM");
                 } else {
                     // It's a plain bool field.
                     return std.fmt.allocPrint(self.arena, ".{{ .{s} = true }}", .{self.snakeName(entry_name)}) catch @panic("OOM");
@@ -363,7 +365,7 @@ const Generator = struct {
             std.debug.assert(bitflag.extended != true);
 
             try self.writer.writeAll(splitJoinNl(self.arena, bitflag.doc, "\n/// ", "/// "));
-            try self.writer.print("pub const {s} = packed struct(u32) {{\n", .{self.pascalName(bitflag.name)});
+            try self.writer.print("pub const {s} = packed struct(u64) {{\n", .{self.pascalName(bitflag.name)});
             var idx: usize = 0;
             var has_combi_or_custom = false;
             for (bitflag.entries) |entry| {
@@ -376,7 +378,7 @@ const Generator = struct {
                 }
             }
 
-            const rest = 32 - idx;
+            const rest = 64 - idx;
             if (rest > 0) try self.writer.print("    _: u{d} = 0,\n", .{rest});
 
             if (has_combi_or_custom) try self.writer.print("\n", .{});
@@ -384,7 +386,7 @@ const Generator = struct {
             for (bitflag.entries) |entry| {
                 if (entry.value) |value| {
                     try self.writer.writeAll(splitJoinNl(self.arena, entry.doc, "\n    /// ", "    /// "));
-                    try self.writer.print("    pub const {s}: @This() = @bitCast(@as(u32, 0x{x:>8})),\n", .{
+                    try self.writer.print("    pub const {s}: @This() = @bitCast(@as(u64, 0x{x:>16})),\n", .{
                         self.snakeName(entry.name),
                         value.u64,
                     });
@@ -538,26 +540,26 @@ const Generator = struct {
     }
 
     /// Emits a parent-descriptor converter on extension structs. Removes the need
-/// for `@ptrCast(@alignCast(...))` at call sites by returning a fully-wired
-/// parent struct whose `next_in_chain` points back at this extension's
-/// `chain` field. Only emitted when the extension extends exactly one struct
-/// (JSON `extends` is a one-element array); produces a method named after the
-/// parent (e.g. `surfaceDescriptor()` for SurfaceSource* types).
-fn emitStructChainHelpers(self: *const Generator, st: Schema.Struct) !void {
-    if (st.type != .extension) return;
-    if (st.extends) |parents| {
-        if (parents.len == 1) {
-            const parent_pascal = self.pascalName(parents[0]);
-            const parent_camel = self.camelName(parents[0]);
-            try self.writer.print(
-                "\n    pub inline fn {s}(self: *const @This()) {s} {{\n" ++
-                "        return .{{ .next_in_chain = @constCast(&self.chain) }};\n" ++
-                "    }}\n",
-                .{ parent_camel, parent_pascal },
-            );
+    /// for `@ptrCast(@alignCast(...))` at call sites by returning a fully-wired
+    /// parent struct whose `next_in_chain` points back at this extension's
+    /// `chain` field. Only emitted when the extension extends exactly one struct
+    /// (JSON `extends` is a one-element array); produces a method named after the
+    /// parent (e.g. `surfaceDescriptor()` for SurfaceSource* types).
+    fn emitStructChainHelpers(self: *const Generator, st: Schema.Struct) !void {
+        if (st.type != .extension) return;
+        if (st.extends) |parents| {
+            if (parents.len == 1) {
+                const parent_pascal = self.pascalName(parents[0]);
+                const parent_camel = self.camelName(parents[0]);
+                try self.writer.print(
+                    "\n    pub inline fn {s}(self: *const @This()) {s} {{\n" ++
+                        "        return .{{ .next_in_chain = @constCast(&self.chain) }};\n" ++
+                        "    }}\n",
+                    .{ parent_camel, parent_pascal },
+                );
+            }
         }
     }
-}
 
     fn emitObjects(self: *const Generator) !void {
         for (self.json.objects) |obj| {
@@ -768,7 +770,7 @@ fn emitStructChainHelpers(self: *const Generator, st: Schema.Struct) !void {
                         if (!first) try self.writer.print(", ", .{});
                         const is_const = arg.pointer.? == .immutable;
                         const cnst = if (is_const) "const " else "";
-                        try self.writer.print("{s}: [*]{s}anyopaque", .{ self.snakeName(arg.name), cnst });
+                        try self.writer.print("{s}: *{s}anyopaque", .{ self.snakeName(arg.name), cnst });
                         first = false;
                         // Emit the matching size param after.
                         const sz_arg = all_args[j + 1];
@@ -840,7 +842,8 @@ fn emitStructChainHelpers(self: *const Generator, st: Schema.Struct) !void {
                         const is_const = arg.pointer.? == .immutable;
                         const cnst = if (is_const) "const " else "";
                         if (!first) try self.writer.print(", ", .{});
-                        try self.writer.print("{s}: []{s}anyopaque", .{ self.snakeName(arg.name), cnst });
+                        const elem = if (is_const) "u8" else "u8";
+                        try self.writer.print("{s}: []{s}{s}", .{ self.snakeName(arg.name), cnst, elem });
                         first = false;
                         j += 1; // skip the size arg (folded into the slice)
                     },
@@ -955,15 +958,15 @@ fn emitStructChainHelpers(self: *const Generator, st: Schema.Struct) !void {
             if (std.mem.eql(u8, method.name, "get_mapped_range")) {
                 try self.writer.print(
                     "    pub inline fn getMappedRangeSlice(self: *Buffer, offset: usize, size: usize) []u8 {{\n" ++
-                    "        return @as([*]u8, @ptrCast(wgpuBufferGetMappedRange(self, offset, size)))[0..size];\n" ++
-                    "    }}\n\n",
+                        "        return @as([*]u8, @ptrCast(wgpuBufferGetMappedRange(self, offset, size)))[0..size];\n" ++
+                        "    }}\n\n",
                     .{},
                 );
             } else if (std.mem.eql(u8, method.name, "get_const_mapped_range")) {
                 try self.writer.print(
                     "    pub inline fn getConstMappedRangeSlice(self: *Buffer, offset: usize, size: usize) []const u8 {{\n" ++
-                    "        return @as([*]const u8, @ptrCast(wgpuBufferGetConstMappedRange(self, offset, size)))[0..size];\n" ++
-                    "    }}\n\n",
+                        "        return @as([*]const u8, @ptrCast(wgpuBufferGetConstMappedRange(self, offset, size)))[0..size];\n" ++
+                        "    }}\n\n",
                     .{},
                 );
             }
@@ -994,6 +997,102 @@ fn emitStructChainHelpers(self: *const Generator, st: Schema.Struct) !void {
     /// level of coverage `refAllDecls` provides in any Zig project.
     fn emitTestBlock(self: *const Generator) !void {
         try self.writer.writeAll("\ntest {\n    std.testing.refAllDecls(@This());\n}\n");
+        if (self.emit_abi_checks) try self.emitExternFnAbiTestBlock();
+    }
+
+    fn emitExternFnAbiTestBlock(self: *const Generator) !void {
+        try self.writer.writeAll(
+            \\
+            \\fn expectExternTypeAbi(comptime Zig: type, comptime C: type) !void {
+            \\    if (Zig == void or C == void) {
+            \\        try std.testing.expect(Zig == void and C == void);
+            \\        return;
+            \\    }
+            \\
+            \\    try std.testing.expectEqual(@sizeOf(C), @sizeOf(Zig));
+            \\    try std.testing.expectEqual(@alignOf(C), @alignOf(Zig));
+            \\}
+            \\
+            \\fn fnTypeFromCProc(comptime CProc: type) type {
+            \\    return switch (@typeInfo(CProc)) {
+            \\        .optional => |optional| fnTypeFromCProc(optional.child),
+            \\        .pointer => |pointer| pointer.child,
+            \\        else => @compileError("expected C proc typedef to be a function pointer"),
+            \\    };
+            \\}
+            \\
+            \\fn expectExternFnAbi(comptime ZigFn: type, comptime CProc: type) !void {
+            \\    const CFn = fnTypeFromCProc(CProc);
+            \\    const zig_info = @typeInfo(ZigFn).@"fn";
+            \\    const c_info = @typeInfo(CFn).@"fn";
+            \\
+            \\    try std.testing.expectEqual(c_info.calling_convention, zig_info.calling_convention);
+            \\    try std.testing.expectEqual(c_info.is_var_args, zig_info.is_var_args);
+            \\    try std.testing.expectEqual(c_info.params.len, zig_info.params.len);
+            \\    try expectExternTypeAbi(zig_info.return_type orelse void, c_info.return_type orelse void);
+            \\
+            \\    inline for (zig_info.params, 0..) |zig_param, i| {
+            \\        if (i < c_info.params.len) {
+            \\            try expectExternTypeAbi(zig_param.type.?, c_info.params[i].type.?);
+            \\        }
+            \\    }
+            \\}
+            \\
+            \\
+        );
+
+        for (self.json.objects) |obj| {
+            const obj_name = self.pascalName(obj.name);
+            if (obj.methods) |methods| {
+                for (methods) |method| {
+                    const c_name = self.cMethodName(obj.name, method.name);
+                    try self.writer.print("test \"abi fn: {s}\" {{\n    try expectExternFnAbi(@TypeOf({s}.{s}), @import(\"c\").WGPUProc{s});\n}}\n", .{
+                        c_name,
+                        obj_name,
+                        c_name,
+                        c_name[4..],
+                    });
+                }
+            }
+
+            if (obj.extended != true) {
+                const add_ref_c = self.cMethodName(obj.name, "add_ref");
+                const release_c = self.cMethodName(obj.name, "release");
+                try self.writer.print("test \"abi fn: {s}\" {{\n    try expectExternFnAbi(@TypeOf({s}.{s}), @import(\"c\").WGPUProc{s});\n}}\n", .{
+                    add_ref_c,
+                    obj_name,
+                    add_ref_c,
+                    add_ref_c[4..],
+                });
+                try self.writer.print("test \"abi fn: {s}\" {{\n    try expectExternFnAbi(@TypeOf({s}.{s}), @import(\"c\").WGPUProc{s});\n}}\n", .{
+                    release_c,
+                    obj_name,
+                    release_c,
+                    release_c[4..],
+                });
+            }
+        }
+
+        for (self.json.structs) |st| {
+            if (st.free_members == true) {
+                const c_name = self.cGlobalName(std.fmt.allocPrint(self.arena, "{s}_free_members", .{st.name}) catch @panic("OOM"));
+                try self.writer.print("test \"abi fn: {s}\" {{\n    try expectExternFnAbi(@TypeOf({s}.{s}), @import(\"c\").WGPUProc{s});\n}}\n", .{
+                    c_name,
+                    self.pascalName(st.name),
+                    c_name,
+                    c_name[4..],
+                });
+            }
+        }
+
+        for (self.json.functions) |func| {
+            const c_name = self.cGlobalName(func.name);
+            try self.writer.print("test \"abi fn: {s}\" {{\n    try expectExternFnAbi(@TypeOf({s}), @import(\"c\").WGPUProc{s});\n}}\n", .{
+                c_name,
+                c_name,
+                c_name[4..],
+            });
+        }
     }
 };
 
@@ -1110,12 +1209,20 @@ pub fn main(init: std.process.Init) !void {
 
     const usage =
         \\
-        \\Usage: zig run gen-bindings.zig <bindings_json_path> <output_path> <prelude_path>
+        \\Usage: zig run gen-bindings.zig [--abi-checks] <bindings_json_path> <output_path> <prelude_path>
     ;
-    const bindings_json_path = args.next() orelse {
+    var emit_abi_checks = false;
+    var bindings_json_path = args.next() orelse {
         std.log.err("No bindings_json_path provided" ++ usage, .{});
         std.process.exit(1);
     };
+    if (std.mem.eql(u8, bindings_json_path, "--abi-checks")) {
+        emit_abi_checks = true;
+        bindings_json_path = args.next() orelse {
+            std.log.err("No bindings_json_path provided" ++ usage, .{});
+            std.process.exit(1);
+        };
+    }
     const output_path = args.next() orelse {
         std.log.err("No output_path provided" ++ usage, .{});
         std.process.exit(1);
@@ -1151,6 +1258,6 @@ pub fn main(init: std.process.Init) !void {
     }
     try output_file_writer.interface.writeAll("\n");
 
-    try generateBindings(init.gpa, bindings_json_str, &output_file_writer.interface);
+    try generateBindings(init.gpa, bindings_json_str, &output_file_writer.interface, emit_abi_checks);
     try output_file_writer.flush();
 }
