@@ -30,6 +30,7 @@ fn generateBindings(gpa: std.mem.Allocator, bindings_json_str: []const u8, write
     try gen.emitStructs();
     try gen.emitObjects();
     try gen.emitFunctions();
+    try gen.emitTestBlock();
 }
 
 const Generator = struct {
@@ -269,7 +270,7 @@ const Generator = struct {
                 }
                 // "none" for bitflags
                 if (std.mem.eql(u8, s, "none")) {
-                    if (ty == .bitflag) return "{}";
+                    if (ty == .bitflag) return ".{}";
                     return null;
                 }
                 // Named enum/bitflag value
@@ -318,7 +319,7 @@ const Generator = struct {
             .uint16, .uint32, .uint64, .usize, .int16, .int32 => return "0",
             .float32, .nullable_float32, .float64, .float64_supertype => return "0",
             .nullable_string, .string_with_default_empty, .out_string => return "std.mem.zeroes(String)",
-            .bitflag => return "{}",
+            .bitflag => return ".{}",
             .@"enum" => |name| {
                 // Bool.Optional (from enum.optional_bool) is defined in the prelude,
                 // not in the JSON enums. C INIT uses WGPU_FALSE (0) = .false.
@@ -550,43 +551,295 @@ const Generator = struct {
         }
     }
 
-    fn emitMethod(self: *const Generator, obj_name: []const u8, method: Schema.Function) !void {
-        const c_name = self.cMethodName(obj_name, method.name);
-        const zig_name = self.camelName(method.name);
+    const Role = enum { plain, array, count, data, string };
 
-        try self.writer.writeAll(splitJoinNl(self.arena, method.doc, "\n    /// ", "    /// "));
+    /// True when the parameter type is one of the C `WGPUString` variants.
+    fn isStringType(ty: Schema.Type) bool {
+        return ty == .nullable_string or ty == .string_with_default_empty or ty == .out_string;
+    }
 
-        // Build the extern fn signature.
-        try self.writer.print("    extern fn {s}(", .{c_name});
-        try self.writer.print("self: *{s}", .{obj_name});
+    /// True when the string variant represents a nullable C string (data may be NULL).
+    fn isNullableString(ty: Schema.Type) bool {
+        return ty == .nullable_string;
+    }
 
-        if (method.args) |args| {
-            for (args) |arg| {
-                if (arg.type == .array) {
-                    const count_name = std.fmt.allocPrint(self.arena, "{s}_count", .{self.snakeName(arg.name)}) catch @panic("OOM");
-                    try self.writer.print(", {s}: usize", .{count_name});
+    /// Element type of a slice, given the child element's `Type`.
+    /// Objects become nullable handles (`?*T`); everything else uses its base Zig type.
+    fn sliceElem(self: *const Generator, child: Schema.Type) []const u8 {
+        return switch (child) {
+            .object => |o| std.fmt.allocPrint(self.arena, "?*{s}", .{self.pascalName(o)}) catch @panic("OOM"),
+            else => self.baseType(child),
+        };
+    }
+
+    /// Extern data-pointer type for an array pair: `[*]const T`, `[*]T`, `?[*]const T`, `?[*]T`.
+    fn externDataType(self: *const Generator, pointer: ?Schema.Parameter.Pointer, optional: bool, elem: []const u8) []const u8 {
+        const is_const = pointer == null or pointer.? == .immutable;
+        const prefix = if (optional) "?[*]" else "[*]";
+        const cnst = if (is_const) "const " else "";
+        return std.fmt.allocPrint(self.arena, "{s}{s}{s}", .{ prefix, cnst, elem }) catch @panic("OOM");
+    }
+
+    /// Zig slice type for an array pair: `[]const T`, `[]T`, `?[]const T`, `?[]T`.
+    fn sliceType(self: *const Generator, pointer: ?Schema.Parameter.Pointer, optional: bool, elem: []const u8) []const u8 {
+        const is_const = pointer == null or pointer.? == .immutable;
+        const prefix = if (optional) "?[]" else "[]";
+        const cnst = if (is_const) "const " else "";
+        return std.fmt.allocPrint(self.arena, "{s}{s}{s}", .{ prefix, cnst, elem }) catch @panic("OOM");
+    }
+
+    /// Emits an extern fn plus either a `pub inline fn` wrapper (when the function takes a
+    /// count+array pair) or a `pub const name = extern_fn` alias (otherwise).
+    /// `indent` is the indentation prefix ("" for globals, "    " for object methods).
+    /// `self_type` is null for global functions, or `*ObjectName` for methods.
+    fn emitFunctionLike(
+        self: *const Generator,
+        indent: []const u8,
+        c_name: []const u8,
+        zig_name: []const u8,
+        doc: []const u8,
+        args: ?[]const Schema.Parameter,
+        callback: ?[]const u8,
+        returns: ?Schema.ReturnType,
+        self_type: ?[]const u8,
+    ) !void {
+        const all_args = args orelse &[_]Schema.Parameter{};
+        const n = all_args.len;
+
+        // Classify each arg's role: plain, array (self-paired), or count/data pair.
+        var roles = try self.arena.alloc(Role, n);
+        for (roles) |*r| r.* = .plain;
+        {
+            var i: usize = 0;
+            while (i < n) : (i += 1) {
+                const arg = all_args[i];
+                if (isStringType(arg.type)) {
+                    roles[i] = .string;
+                    continue;
                 }
-                const ty = self.paramType(arg);
-                try self.writer.print(", {s}: {s}", .{ self.snakeName(arg.name), ty });
+                if (arg.type == .array) {
+                    roles[i] = .array;
+                    continue;
+                }
+                if (arg.type == .usize and std.mem.endsWith(u8, arg.name, "_count") and i + 1 < n) {
+                    const next = all_args[i + 1];
+                    if (next.pointer != null and next.type != .array) {
+                        roles[i] = .count;
+                        roles[i + 1] = .data;
+                        i += 1; // skip the data arg
+                        continue;
+                    }
+                }
             }
         }
 
-        // Async functions get a CallbackInfo param and return Future.
-        if (method.callback) |cb_name| {
-            const cb_local = if (std.mem.startsWith(u8, cb_name, "callback.")) cb_name[9..] else cb_name;
-            const info_type = std.fmt.allocPrint(self.arena, "{s}CallbackInfo", .{self.pascalName(cb_local)}) catch @panic("OOM");
-            try self.writer.print(", callback_info: {s}", .{info_type});
-        }
+        const has_pair = blk: {
+            for (roles) |r| if (r == .array or r == .count or r == .string) break :blk true;
+            break :blk false;
+        };
+
+        // Doc comment.
+        const doc_sep = std.fmt.allocPrint(self.arena, "\n{s}/// ", .{indent}) catch @panic("OOM");
+        const doc_pfx = std.fmt.allocPrint(self.arena, "{s}/// ", .{indent}) catch @panic("OOM");
+        try self.writer.writeAll(splitJoinNl(self.arena, doc, doc_sep, doc_pfx));
 
         // Return type.
         const ret: []const u8 = blk: {
-            if (method.callback != null) break :blk "Future";
-            if (method.returns) |r| break :blk self.returnType(r);
+            if (callback != null) break :blk "Future";
+            if (returns) |r| break :blk self.returnType(r);
             break :blk "void";
         };
+
+        // CallbackInfo type, if async.
+        var cb_info_type: ?[]const u8 = null;
+        if (callback) |cb_name| {
+            const cb_local = if (std.mem.startsWith(u8, cb_name, "callback.")) cb_name[9..] else cb_name;
+            cb_info_type = std.fmt.allocPrint(self.arena, "{s}CallbackInfo", .{self.pascalName(cb_local)}) catch @panic("OOM");
+        }
+
+        // --- extern fn signature ---
+        try self.writer.print("{s}extern fn {s}(", .{ indent, c_name });
+        var first = true;
+        if (self_type) |st| {
+            try self.writer.print("self: {s}", .{st});
+            first = false;
+        }
+        {
+            var j: usize = 0;
+            while (j < n) : (j += 1) {
+                switch (roles[j]) {
+                    .data => {},
+                    .string => {
+                        const arg = all_args[j];
+                        if (!first) try self.writer.print(", ", .{});
+                        try self.writer.print("{s}: String", .{self.snakeName(arg.name)});
+                        first = false;
+                    },
+                    .array => {
+                        const arg = all_args[j];
+                        const count_name = std.fmt.allocPrint(self.arena, "{s}_count", .{self.snakeName(arg.name)}) catch @panic("OOM");
+                        if (!first) try self.writer.print(", ", .{});
+                        try self.writer.print("{s}: usize", .{count_name});
+                        first = false;
+                        const elem = self.sliceElem(arg.type.array.*);
+                        const dt = self.externDataType(arg.pointer, arg.optional orelse false, elem);
+                        try self.writer.print(", {s}: {s}", .{ self.snakeName(arg.name), dt });
+                    },
+                    .count => {
+                        const c_arg = all_args[j];
+                        if (!first) try self.writer.print(", ", .{});
+                        try self.writer.print("{s}: usize", .{self.snakeName(c_arg.name)});
+                        first = false;
+                        const d_arg = all_args[j + 1];
+                        const elem = self.sliceElem(d_arg.type);
+                        const dt = self.externDataType(d_arg.pointer, d_arg.optional orelse false, elem);
+                        try self.writer.print(", {s}: {s}", .{ self.snakeName(d_arg.name), dt });
+                        j += 1; // skip the data arg
+                    },
+                    .plain => {
+                        const arg = all_args[j];
+                        const ty = self.paramType(arg);
+                        if (!first) try self.writer.print(", ", .{});
+                        try self.writer.print("{s}: {s}", .{ self.snakeName(arg.name), ty });
+                        first = false;
+                    },
+                }
+            }
+        }
+        if (cb_info_type) |ct| {
+            if (!first) try self.writer.print(", ", .{});
+            try self.writer.print("callback_info: {s}", .{ct});
+            first = false;
+        }
         try self.writer.print(") {s};\n", .{ret});
 
-        try self.writer.print("    pub const {s} = {s};\n\n", .{ zig_name, c_name });
+        // --- pub const alias when there are no array/string args ---
+        if (!has_pair) {
+            try self.writer.print("{s}pub const {s} = {s};\n\n", .{ indent, zig_name, c_name });
+            return;
+        }
+
+        // --- pub inline fn wrapper ---
+        try self.writer.print("{s}pub inline fn {s}(", .{ indent, zig_name });
+        first = true;
+        if (self_type) |st| {
+            try self.writer.print("self: {s}", .{st});
+            first = false;
+        }
+        {
+            var j: usize = 0;
+            while (j < n) : (j += 1) {
+                switch (roles[j]) {
+                    .data => {},
+                    .string => {
+                        const arg = all_args[j];
+                        const st: []const u8 = if (isNullableString(arg.type)) "?[]const u8" else "[]const u8";
+                        if (!first) try self.writer.print(", ", .{});
+                        try self.writer.print("{s}: {s}", .{ self.snakeName(arg.name), st });
+                        first = false;
+                    },
+                    .array => {
+                        const arg = all_args[j];
+                        const elem = self.sliceElem(arg.type.array.*);
+                        const st = self.sliceType(arg.pointer, arg.optional orelse false, elem);
+                        if (!first) try self.writer.print(", ", .{});
+                        try self.writer.print("{s}: {s}", .{ self.snakeName(arg.name), st });
+                        first = false;
+                    },
+                    .count => {
+                        const d_arg = all_args[j + 1];
+                        const elem = self.sliceElem(d_arg.type);
+                        const st = self.sliceType(d_arg.pointer, d_arg.optional orelse false, elem);
+                        if (!first) try self.writer.print(", ", .{});
+                        try self.writer.print("{s}: {s}", .{ self.snakeName(d_arg.name), st });
+                        first = false;
+                        j += 1; // skip the data arg
+                    },
+                    .plain => {
+                        const arg = all_args[j];
+                        const ty = self.paramType(arg);
+                        if (!first) try self.writer.print(", ", .{});
+                        try self.writer.print("{s}: {s}", .{ self.snakeName(arg.name), ty });
+                        first = false;
+                    },
+                }
+            }
+        }
+        if (cb_info_type) |ct| {
+            if (!first) try self.writer.print(", ", .{});
+            try self.writer.print("callback_info: {s}", .{ct});
+            first = false;
+        }
+        try self.writer.print(") {s} {{\n", .{ret});
+
+        // inline body: forward to extern fn, unwrapping slices into .len/.ptr pairs.
+        try self.writer.print("{s}    return {s}(", .{ indent, c_name });
+        first = true;
+        if (self_type != null) {
+            try self.writer.print("self", .{});
+            first = false;
+        }
+        {
+            var j: usize = 0;
+            while (j < n) : (j += 1) {
+                switch (roles[j]) {
+                    .data => {},
+                    .string => {
+                        const arg = all_args[j];
+                        const name = self.snakeName(arg.name);
+                        if (!first) try self.writer.print(", ", .{});
+                        if (isNullableString(arg.type)) {
+                            try self.writer.print("if ({s}) |s| String.from(s) else .{{ .data = null, .length = 0 }}", .{name});
+                        } else {
+                            try self.writer.print("String.from({s})", .{name});
+                        }
+                        first = false;
+                    },
+                    .array => {
+                        const arg = all_args[j];
+                        const name = self.snakeName(arg.name);
+                        if (!first) try self.writer.print(", ", .{});
+                        if (arg.optional orelse false) {
+                            try self.writer.print("if ({s}) |s| s.len else 0, if ({s}) |s| s.ptr else null", .{ name, name });
+                        } else {
+                            try self.writer.print("{s}.len, {s}.ptr", .{ name, name });
+                        }
+                        first = false;
+                    },
+                    .count => {
+                        const d_arg = all_args[j + 1];
+                        const name = self.snakeName(d_arg.name);
+                        if (!first) try self.writer.print(", ", .{});
+                        if (d_arg.optional orelse false) {
+                            try self.writer.print("if ({s}) |s| s.len else 0, if ({s}) |s| s.ptr else null", .{ name, name });
+                        } else {
+                            try self.writer.print("{s}.len, {s}.ptr", .{ name, name });
+                        }
+                        first = false;
+                        j += 1; // skip the data arg
+                    },
+                    .plain => {
+                        const arg = all_args[j];
+                        if (!first) try self.writer.print(", ", .{});
+                        try self.writer.print("{s}", .{self.snakeName(arg.name)});
+                        first = false;
+                    },
+                }
+            }
+        }
+        if (cb_info_type != null) {
+            if (!first) try self.writer.print(", ", .{});
+            try self.writer.print("callback_info", .{});
+            first = false;
+        }
+        try self.writer.print(");\n{s}}}\n\n", .{indent});
+    }
+
+    fn emitMethod(self: *const Generator, obj_name: []const u8, method: Schema.Function) !void {
+        const c_name = self.cMethodName(obj_name, method.name);
+        const zig_name = self.camelName(method.name);
+        const self_type = std.fmt.allocPrint(self.arena, "*{s}", .{obj_name}) catch @panic("OOM");
+        try self.emitFunctionLike("    ", c_name, zig_name, method.doc, method.args, method.callback, method.returns, self_type);
     }
 
     fn emitAddRefRelease(self: *const Generator, obj_name: []const u8) !void {
@@ -603,45 +856,16 @@ const Generator = struct {
         for (self.json.functions) |func| {
             const c_name = self.cGlobalName(func.name);
             const zig_name = self.camelName(func.name);
-
-            try self.writer.writeAll(splitJoinNl(self.arena, func.doc, "\n/// ", "/// "));
-
-            // Build the extern fn signature.
-            try self.writer.print("extern fn {s}(", .{c_name});
-
-            if (func.args) |args| {
-                for (args, 0..) |arg, i| {
-                    if (i > 0) try self.writer.print(", ", .{});
-                    if (arg.type == .array) {
-                        const count_name = std.fmt.allocPrint(self.arena, "{s}_count", .{self.snakeName(arg.name)}) catch @panic("OOM");
-                        try self.writer.print("{s}: usize", .{count_name});
-                    }
-                    const ty = self.paramType(arg);
-                    if (arg.type == .array) {
-                        try self.writer.print(", {s}: {s}", .{ self.snakeName(arg.name), ty });
-                    } else {
-                        try self.writer.print("{s}: {s}", .{ self.snakeName(arg.name), ty });
-                    }
-                }
-            }
-
-            if (func.callback) |cb_name| {
-                const cb_local = if (std.mem.startsWith(u8, cb_name, "callback.")) cb_name[9..] else cb_name;
-                const info_type = std.fmt.allocPrint(self.arena, "{s}CallbackInfo", .{self.pascalName(cb_local)}) catch @panic("OOM");
-                if (func.args != null and func.args.?.len > 0) {
-                    try self.writer.print(", ", .{});
-                }
-                try self.writer.print("callback_info: {s}", .{info_type});
-            }
-
-            const ret: []const u8 = blk: {
-                if (func.callback != null) break :blk "Future";
-                if (func.returns) |r| break :blk self.returnType(r);
-                break :blk "void";
-            };
-            try self.writer.print(") {s};\n", .{ret});
-            try self.writer.print("pub const {s} = {s};\n\n", .{ zig_name, c_name });
+            try self.emitFunctionLike("", c_name, zig_name, func.doc, func.args, func.callback, func.returns, null);
         }
+    }
+
+    /// Emits a `test` block that references every generated top-level decl via
+    /// `std.testing.refAllDecls(@This())`. This forces type-level analysis of all
+    /// declarations (catches undeclared identifiers, bad type refs, etc.) — the same
+    /// level of coverage `refAllDecls` provides in any Zig project.
+    fn emitTestBlock(self: *const Generator) !void {
+        try self.writer.writeAll("\ntest {\n    std.testing.refAllDecls(@This());\n}\n");
     }
 };
 
