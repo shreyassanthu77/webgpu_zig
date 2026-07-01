@@ -1,5 +1,5 @@
 .zig-cache
 zig-out
 zig-pkg
-/tools/schema.ts
+/tools/gen/schema.ts
 /src/bindings.zig

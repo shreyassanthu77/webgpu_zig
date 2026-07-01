@@ -4,6 +4,10 @@ pub const String = extern struct {
     data: [*c]const u8,
     length: usize,
 
+    /// The null string view (`{ NULL, 0 }`), matching a zero-initialized
+    /// `WGPUStringView`. Distinct from an empty-but-non-null string.
+    pub const NULL: String = .{ .data = null, .length = 0 };
+
     pub inline fn from(str: []const u8) String {
         return String{
             .data = @ptrCast(str.ptr),

@@ -14,7 +14,7 @@ pub const Constant = struct {
     doc: []const u8,
     value: Value,
 
-    const Value = union(enum) {
+    pub const Value = union(enum) {
         u64: u64,
         nan: f32,
 
@@ -51,14 +51,14 @@ pub const Bitflag = struct {
     extended: ?bool = null,
     entries: []const Entry,
 
-    const Entry = struct {
+    pub const Entry = struct {
         name: []const u8,
         namespace: ?[]const u8 = null,
         doc: []const u8,
         value: ?Value = null,
         value_combination: ?[]const []const u8 = null,
 
-        const Value = union(enum) {
+        pub const Value = union(enum) {
             u64: u64,
             nan: f32,
 
@@ -96,7 +96,7 @@ pub const Enum = struct {
     extended: ?bool = null,
     entries: []const ?Entry,
 
-    const Entry = struct {
+    pub const Entry = struct {
         name: []const u8,
         namespace: ?[]const u8 = null,
         doc: []const u8,

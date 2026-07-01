@@ -33,6 +33,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     }).createModule();
     inline for (&.{
+        .{ "gen-unit-tests", b.path("tools/gen/tests.zig") },
         .{ "prelude", b.path("src/prelude_test.zig") },
         .{ "webgpu", test_bindings_file },
     }) |test_file| {
@@ -54,76 +55,6 @@ pub fn build(b: *std.Build) void {
 
     const check_step = b.step("check", "Run all tests");
     check_step.dependOn(test_step);
-
-    // const upstream = b.dependency("webgpu-headers-upstream", .{});
-    // const webgpu_json = upstream.path("webgpu.json");
-    //
-    // const bindings_generator = b.addExecutable(.{
-    //     .name = "gen-bindings",
-    //     .root_module = b.createModule(.{
-    //         .root_source_file = b.path("tools/gen-bindings.zig"),
-    //         .target = b.graph.host,
-    //         .optimize = .Debug,
-    //     }),
-    // });
-    // const run_bindings_generator = b.addRunArtifact(bindings_generator);
-    // run_bindings_generator.has_side_effects = true;
-    // run_bindings_generator.addFileArg(webgpu_json);
-    // run_bindings_generator.addFileArg(b.path("src/bindings.zig"));
-    // // const bindings_file = run_bindings_generator.addOutputFileArg("bindings.zig");
-    // run_bindings_generator.addFileArg(b.path("src/prelude.zig"));
-
-    // const run_abi_bindings_generator = b.addRunArtifact(bindings_generator);
-    // run_abi_bindings_generator.addArg("--abi-checks");
-    // run_abi_bindings_generator.addFileArg(webgpu_json);
-    // const abi_bindings_file = run_abi_bindings_generator.addOutputFileArg("bindings-abi.zig");
-    // run_abi_bindings_generator.addFileArg(b.path("src/prelude.zig"));
-
-    // const webgpu_h_mod = b.addTranslateC(.{
-    //     .target = target,
-    //     .optimize = optimize,
-    //     .root_source_file = upstream.path("webgpu.h"),
-    // }).createModule();
-    //
-    // _ = b.addModule("bindings", .{
-    //     // .root_source_file = bindings_file,
-    //     .root_source_file = b.path("src/bindings.zig"),
-    //     .target = target,
-    //     .optimize = optimize,
-    //     .imports = &.{
-    //         .{ .name = "c", .module = webgpu_h_mod },
-    //     },
-    // });
-    //
-    // const abi_bindings = b.createModule(.{
-    //     .root_source_file = abi_bindings_file,
-    //     .target = target,
-    //     .optimize = optimize,
-    //     .imports = &.{
-    //         .{ .name = "c", .module = webgpu_h_mod },
-    //     },
-    // });
-    //
-    // const bindings_test = b.addTest(.{
-    //     .root_module = b.createModule(.{
-    //         .root_source_file = b.path("src/test-bindings.zig"),
-    //         .target = target,
-    //         .optimize = optimize,
-    //         .imports = &.{
-    //             .{ .name = "webgpu", .module = abi_bindings },
-    //             .{ .name = "c", .module = webgpu_h_mod },
-    //         },
-    //     }),
-    //     .use_llvm = true,
-    // });
-    // bindings_test.step.dependOn(&run_bindings_generator.step);
-    //
-    // const test_step = b.step("test", "Run all tests");
-    // const run_bindings_test = b.addRunArtifact(bindings_test);
-    // test_step.dependOn(&run_bindings_test.step);
-    //
-    // const check_step = b.step("check", "Run all tests");
-    // check_step.dependOn(&bindings_test.step);
 }
 
 const BindingsGen = struct {
@@ -139,7 +70,7 @@ const BindingsGen = struct {
         const bindings_generator = b.addExecutable(.{
             .name = "gen-bindings",
             .root_module = b.createModule(.{
-                .root_source_file = b.path("tools/gen-bindings.zig"),
+                .root_source_file = b.path("tools/gen/main.zig"),
                 .target = b.graph.host,
                 .optimize = .Debug,
             }),
