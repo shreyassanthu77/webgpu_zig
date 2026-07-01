@@ -324,6 +324,129 @@ fn emitFunctionLike(
         try e.w.line("return {s}({s});", .{ c_name, e.renderList(all, .forward) });
     try e.w.close("}}", .{});
     try e.w.blank();
+
+    if (callback != null and self_ty != null)
+        try e.emitSync(zig_name, callback.?, all, self_ty.?);
+}
+
+/// Emits a blocking `<name>Sync` wrapper for an async method: sets up an
+/// internal callback that captures the result, kicks off the async op, then
+/// spins `waitAny` (forever) until the callback fires. Wait failures surface as
+/// `error.WaitFailed`; the operation's own outcome is a `Result` union.
+fn emitSync(e: *Emit, zig_name: []const u8, cb_name: []const u8, all: []const params.Param, self_ty: []const u8) !void {
+    const cb = e.findCallback(cb_name) orelse return;
+    const cb_args = cb.args orelse return;
+
+    // Classify callback args into status / message / payload.
+    var status: ?Schema.Parameter = null;
+    var message: ?Schema.Parameter = null;
+    var payload: std.ArrayList(Schema.Parameter) = .empty;
+    for (cb_args) |arg| {
+        if (std.mem.eql(u8, arg.name, "status")) {
+            status = arg;
+        } else if (std.mem.eql(u8, arg.name, "message")) {
+            message = arg;
+        } else {
+            try payload.append(e.a, arg);
+        }
+    }
+    const st = status orelse return; // no status -> not a result-style async op
+    const status_ty = e.typeStr(e.rawType(st.type, st.pointer, st.optional orelse false));
+
+    // Payload type and the `ok` value expression.
+    var payload_ty: []const u8 = "void";
+    var ok_val: []const u8 = "{}";
+    if (payload.items.len == 1) {
+        const p = payload.items[0];
+        payload_ty = e.typeStr(e.rawType(p.type, p.pointer, p.optional orelse false));
+        ok_val = e.ident(p.name);
+    } else if (payload.items.len > 1) {
+        var tw = std.Io.Writer.Allocating.init(e.a);
+        var vw = std.Io.Writer.Allocating.init(e.a);
+        tw.writer.writeAll("struct { ") catch @panic("OOM");
+        vw.writer.writeAll(".{ ") catch @panic("OOM");
+        for (payload.items) |p| {
+            const pty = e.typeStr(e.rawType(p.type, p.pointer, p.optional orelse false));
+            tw.writer.print("{s}: {s}, ", .{ e.ident(p.name), pty }) catch @panic("OOM");
+            vw.writer.print(".{s} = {s}, ", .{ e.ident(p.name), e.ident(p.name) }) catch @panic("OOM");
+        }
+        tw.writer.writeAll("}") catch @panic("OOM");
+        vw.writer.writeAll("}") catch @panic("OOM");
+        payload_ty = tw.toOwnedSlice() catch @panic("OOM");
+        ok_val = vw.toOwnedSlice() catch @panic("OOM");
+    }
+
+    const result_ty = std.fmt.allocPrint(e.a, "Result({s}, {s})", .{ status_ty, payload_ty }) catch @panic("OOM");
+    const msg_expr = if (message) |m|
+        std.fmt.allocPrint(e.a, "copyMessage({s})", .{e.ident(m.name)}) catch @panic("OOM")
+    else
+        "\"\"";
+
+    const is_instance = std.mem.eql(u8, self_ty, "*Instance");
+    const poller = if (is_instance) "self" else "instance";
+
+    // Signature: self, [instance], <wrapper args...>  (callback_info dropped).
+    const inner = all[1 .. all.len - 1]; // drop self and trailing callback_info
+    var sig = std.Io.Writer.Allocating.init(e.a);
+    sig.writer.print("self: {s}", .{self_ty}) catch @panic("OOM");
+    if (!is_instance) sig.writer.writeAll(", instance: *Instance") catch @panic("OOM");
+    if (inner.len > 0) {
+        sig.writer.writeAll(", ") catch @panic("OOM");
+        params.renderList(inner, &sig.writer, .wrapper) catch @panic("OOM");
+    }
+
+    try e.w.open("pub inline fn {s}Sync({s}) error{{WaitFailed}}!{s} {{", .{ zig_name, sig.toOwnedSlice() catch @panic("OOM"), result_ty });
+
+    // Capture struct with the C callback.
+    try e.w.open("const Capture = struct {{", .{});
+    try e.w.line("result: {s} = undefined,", .{result_ty});
+    try e.w.line("done: bool = false,", .{});
+    var cbsig = std.Io.Writer.Allocating.init(e.a);
+    for (cb_args) |arg|
+        cbsig.writer.print("{s}: {s}, ", .{ e.ident(arg.name), e.typeStr(e.rawType(arg.type, arg.pointer, arg.optional orelse false)) }) catch @panic("OOM");
+    try e.w.open("fn cb({s}ud1: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {{", .{cbsig.toOwnedSlice() catch @panic("OOM")});
+    try e.w.line("const cap_ptr: *@This() = @ptrCast(@alignCast(ud1.?));", .{});
+    try e.w.line("cap_ptr.result = if ({s} == .success) .{{ .ok = {s} }} else .{{ .err = .{{ .status = {s}, .message = {s} }} }};", .{ e.ident(st.name), ok_val, e.ident(st.name), msg_expr });
+    try e.w.line("cap_ptr.done = true;", .{});
+    try e.w.close("}}", .{});
+    try e.w.close("}};", .{});
+
+    try e.w.line("var cap: Capture = .{{}};", .{});
+
+    // Build callback_info and kick off the async op via the nice wrapper.
+    try e.w.line("const callback_info: {s} = .{{ .mode = .wait_any_only, .callback = &Capture.cb, .userdata1 = &cap }};", .{e.infoName(cb_name)});
+    try e.w.line("const future = self.{s}({s});", .{ zig_name, e.renderList(all[1..], .wrapper_call) });
+    try e.w.line("var infos = [_]FutureWaitInfo{{.{{ .future = future }}}};", .{});
+    try e.w.open("while (!cap.done) {{", .{});
+    try e.w.open("switch ({s}.waitAny(&infos, std.math.maxInt(u64))) {{", .{poller});
+    try e.w.line(".success, .timed_out => {{}},", .{});
+    try e.w.line("else => return error.WaitFailed,", .{});
+    try e.w.close("}}", .{});
+    try e.w.close("}}", .{});
+    try e.w.line("return cap.result;", .{});
+    try e.w.close("}}", .{});
+    try e.w.blank();
+}
+
+fn findCallback(e: *Emit, name: []const u8) ?Schema.Callback {
+    const local = if (std.mem.startsWith(u8, name, "callback.")) name[9..] else name;
+    for (e.s.callbacks) |cb| if (std.mem.eql(u8, cb.name, local)) return cb;
+    return null;
+}
+
+/// Like `snake`, but also escapes primitive type names (e.g. `type`), which are
+/// legal as struct fields but not as `var`/`const`/parameter identifiers.
+fn ident(e: *Emit, s: []const u8) []const u8 {
+    const snaked = e.snake(s);
+    if (snaked.len > 0 and snaked[0] == '@') return snaked;
+    const primitives = std.StaticStringMap(void).initComptime(.{
+        .{"type"},           .{"void"},     .{"bool"},     .{"anyopaque"},
+        .{"anyerror"},       .{"anyframe"}, .{"noreturn"}, .{"comptime_int"},
+        .{"comptime_float"}, .{"isize"},    .{"usize"},    .{"c_int"},
+    });
+    if (primitives.has(snaked))
+        return std.fmt.allocPrint(e.a, "@\"{s}\"", .{snaked}) catch @panic("OOM");
+    return snaked;
 }
 
 fn emitBufferSpecials(e: *Emit, obj: []const u8, method: []const u8) !void {

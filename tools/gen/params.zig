@@ -3,7 +3,7 @@ const Schema = @import("Schema.zig");
 const ZigType = @import("ZigType.zig");
 const naming = @import("naming.zig");
 
-pub const Mode = enum { extern_, wrapper, forward };
+pub const Mode = enum { extern_, wrapper, forward, wrapper_call };
 
 pub const Param = union(enum) {
     /// One-to-one parameter (also used to model `self`).
@@ -26,7 +26,7 @@ pub const Param = union(enum) {
     pub fn render(self: Param, w: *std.Io.Writer, mode: Mode) !void {
         switch (self) {
             .scalar => |s| switch (mode) {
-                .forward => try w.writeAll(s.name),
+                .forward, .wrapper_call => try w.writeAll(s.name),
                 else => {
                     try w.print("{s}: ", .{s.name});
                     try s.ty.format(w);
@@ -35,6 +35,7 @@ pub const Param = union(enum) {
             .string => |s| switch (mode) {
                 .extern_ => try w.print("{s}: String", .{s.name}),
                 .wrapper => try w.print("{s}: {s}", .{ s.name, if (s.nullable) "?[]const u8" else "[]const u8" }),
+                .wrapper_call => try w.writeAll(s.name),
                 .forward => if (s.nullable)
                     try w.print("if ({s}) |v| String.from(v) else String.NULL", .{s.name})
                 else
@@ -53,6 +54,7 @@ pub const Param = union(enum) {
                     if (s.is_const) try w.writeAll("const ");
                     try s.elem.format(w);
                 },
+                .wrapper_call => try w.writeAll(s.data_name),
                 .forward => if (s.optional)
                     try w.print("if ({s}) |v| v.len else 0, if ({s}) |v| v.ptr else null", .{ s.data_name, s.data_name })
                 else
@@ -61,10 +63,11 @@ pub const Param = union(enum) {
             .bytes => |b| switch (mode) {
                 .extern_ => try w.print("{s}: *{s}anyopaque, {s}: usize", .{ b.name, if (b.is_const) "const " else "", b.size_name }),
                 .wrapper => try w.print("{s}: []{s}u8", .{ b.name, if (b.is_const) "const " else "" }),
+                .wrapper_call => try w.writeAll(b.name),
                 .forward => try w.print("{s}.ptr, {s}.len", .{ b.name, b.name }),
             },
             .callback_info => |c| switch (mode) {
-                .forward => try w.writeAll("callback_info"),
+                .forward, .wrapper_call => try w.writeAll("callback_info"),
                 else => try w.print("callback_info: {s}", .{c.ty_name}),
             },
         }

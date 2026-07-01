@@ -76,6 +76,37 @@ pub const Bool = enum(u32) {
     };
 };
 
+/// Result of a synchronous (`...Sync`) wrapper around an async webgpu operation.
+/// `ok` holds the operation's payload; `err` holds the failing status and its
+/// message. Wait failures (from `waitAny`) are reported via the outer
+/// `error{WaitFailed}` on the `...Sync` function, not here.
+pub fn Result(comptime Stat: type, comptime Payload: type) type {
+    return union(enum) {
+        ok: Payload,
+        err: struct { status: Stat, message: []const u8 },
+
+        /// Returns the payload on success, or `error.WebGpuFailed` otherwise.
+        /// Use a `switch` on the union directly if you need the status/message.
+        pub fn unwrap(self: @This()) error{WebGpuFailed}!Payload {
+            return switch (self) {
+                .ok => |v| v,
+                .err => error.WebGpuFailed,
+            };
+        }
+    };
+}
+
+/// Copies a callback message (only valid during the callback) into a
+/// thread-local buffer so it can outlive the callback. The returned slice is
+/// valid until the next `...Sync` call on the same thread.
+threadlocal var sync_msg_buf: [1024]u8 = undefined;
+pub fn copyMessage(s: String) []const u8 {
+    const src = s.into();
+    const n = @min(src.len, sync_msg_buf.len);
+    @memcpy(sync_msg_buf[0..n], src[0..n]);
+    return sync_msg_buf[0..n];
+}
+
 pub const Proc = *const fn () callconv(.c) void;
 
 extern fn wgpuGetProcAddress(procName: String) Proc;
