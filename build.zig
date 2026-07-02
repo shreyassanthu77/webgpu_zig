@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
     const bindings_gen = BindingsGen.init(b);
 
     const bindings_file = bindings_gen.generateBindings(false);
-    _ = b.addModule("webgpu", .{
+    const webgpu_mod = b.addModule("webgpu", .{
         .root_source_file = bindings_file,
         .target = target,
         .optimize = optimize,
@@ -27,11 +27,7 @@ pub fn build(b: *std.Build) void {
     const docs_step = b.step("docs", "Generate docs");
     const docs_lib = b.addLibrary(.{
         .name = "webgpu-docs",
-        .root_module = b.createModule(.{
-            .root_source_file = bindings_file,
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = webgpu_mod,
     });
     docs_step.dependOn(&b.addInstallDirectory(.{
         .source_dir = docs_lib.getEmittedDocs(),
@@ -39,8 +35,17 @@ pub fn build(b: *std.Build) void {
         .install_dir = .prefix,
     }).step);
 
+    const check_step = b.step("check", "Build everything without running tests");
     const test_step = b.step("test", "Run all tests");
 
+    const wgvk_stubs = b.addLibrary(.{
+        .name = "wgvk-stubs",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/wgvk_stubs.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
     const test_bindings_file = bindings_gen.generateBindings(true);
     const webgpu_h_mod = b.addTranslateC(.{
         .root_source_file = bindings_gen.upstream.path("webgpu.h"),
@@ -66,10 +71,16 @@ pub fn build(b: *std.Build) void {
         });
         const run_test_exe = b.addRunArtifact(test_exe);
         test_step.dependOn(&run_test_exe.step);
-    }
+        check_step.dependOn(&test_exe.step);
 
-    const check_step = b.step("check", "Run all tests");
-    check_step.dependOn(test_step);
+        if (b.lazyDependency("WGVK", .{
+            .target = target,
+            .optimize = optimize,
+        })) |wgvk| {
+            test_exe.root_module.linkLibrary(wgvk.artifact("wgvk"));
+            test_exe.root_module.linkLibrary(wgvk_stubs);
+        }
+    }
 }
 
 const BindingsGen = struct {

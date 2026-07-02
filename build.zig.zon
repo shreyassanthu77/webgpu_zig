@@ -6,6 +6,11 @@
             .url = "git+https://github.com/webgpu-native/webgpu-headers#a11ef4462405c4506ad7284e5b1edeff2750bb54",
             .hash = "N-V-__8AAPbnCwB6Tt_IqYyVGVYYP7A3RJARj6YutO2ZEU6h",
         },
+        .WGVK = .{
+            .url = "git+https://github.com/manuel5975p/WGVK.git#76a6b7760cdf5acfeb2d1593982990045199565a",
+            .hash = "WGVK-0.0.1-toLO5ZIJYAFTY_gN7lVEBq4ObOnJQltxxEMrCoLIuoHD",
+            .lazy = true,
+        },
     },
     .minimum_zig_version = "0.16.0",
     .paths = .{""},

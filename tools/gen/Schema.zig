@@ -64,7 +64,6 @@ pub const Bitflag = struct {
 
         pub const Value = union(enum) {
             u64: u64,
-            nan: f32,
 
             pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !Value {
                 const name_token: std.json.Token = try source.nextAllocMax(allocator, .alloc_if_needed, options.max_value_len.?);
@@ -76,8 +75,6 @@ pub const Bitflag = struct {
                             return .{ .u64 = std.math.maxInt(u32) };
                         } else if (std.mem.eql(u8, s, "uint64_max")) {
                             return .{ .u64 = std.math.maxInt(u64) };
-                        } else if (std.mem.eql(u8, s, "nan")) {
-                            return .{ .nan = std.zig.c_translation.builtins.nanf("") };
                         } else {
                             return error.UnexpectedToken;
                         }

@@ -48,15 +48,16 @@ pub const Param = union(enum) {
                     if (s.is_const) try w.writeAll("const ");
                     try s.elem.format(w);
                 },
+                // An optional slice in C ("may be null") is just an empty slice in
+                // Zig; only the extern side keeps the nullable pointer.
                 .wrapper => {
-                    try w.print("{s}: ", .{s.data_name});
-                    try w.writeAll(if (s.optional) "?[]" else "[]");
+                    try w.print("{s}: []", .{s.data_name});
                     if (s.is_const) try w.writeAll("const ");
                     try s.elem.format(w);
                 },
                 .wrapper_call => try w.writeAll(s.data_name),
                 .forward => if (s.optional)
-                    try w.print("if ({s}) |v| v.len else 0, if ({s}) |v| v.ptr else null", .{ s.data_name, s.data_name })
+                    try w.print("{s}.len, if ({s}.len == 0) null else {s}.ptr", .{ s.data_name, s.data_name, s.data_name })
                 else
                     try w.print("{s}.len, {s}.ptr", .{ s.data_name, s.data_name }),
             },
@@ -175,6 +176,22 @@ test "slice renders three ways" {
     try expectRender(a, p, .extern_, "commands_count: usize, commands: [*]const ?*CommandBuffer");
     try expectRender(a, p, .wrapper, "commands: []const ?*CommandBuffer");
     try expectRender(a, p, .forward, "commands.len, commands.ptr");
+}
+
+test "optional slice renders as plain slice" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const p: Param = .{ .slice = .{
+        .count_name = "futures_count",
+        .data_name = "futures",
+        .elem = ZigType.named("FutureWaitInfo"),
+        .is_const = false,
+        .optional = true,
+    } };
+    try expectRender(a, p, .extern_, "futures_count: usize, futures: ?[*]FutureWaitInfo");
+    try expectRender(a, p, .wrapper, "futures: []FutureWaitInfo");
+    try expectRender(a, p, .forward, "futures.len, if (futures.len == 0) null else futures.ptr");
 }
 
 test "string renders three ways" {

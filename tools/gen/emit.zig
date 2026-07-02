@@ -23,9 +23,28 @@ pub fn run(a: std.mem.Allocator, s: Schema, out: *std.Io.Writer) !void {
     try e.emitStructs();
     try e.emitObjects();
     try e.emitFunctions();
-    try w.line("test {{", .{});
-    try w.line("    std.testing.refAllDecls(@This());", .{});
-    try w.line("}}", .{});
+    // Recursively reference every declaration (std.testing.refAllDecls is not
+    // recursive, so it would miss object methods) — this forces semantic
+    // analysis and codegen of all wrapper bodies, which nothing else touches.
+    try out.writeAll(
+        \\test "reference all declarations" {
+        \\    @setEvalBranchQuota(1_000_000);
+        \\    refAllDeclsRecursive(@This());
+        \\}
+        \\
+        \\fn refAllDeclsRecursive(comptime T: type) void {
+        \\    inline for (comptime std.meta.declarations(T)) |decl| {
+        \\        if (@TypeOf(@field(T, decl.name)) == type) {
+        \\            switch (@typeInfo(@field(T, decl.name))) {
+        \\                .@"struct", .@"enum", .@"union", .@"opaque" => refAllDeclsRecursive(@field(T, decl.name)),
+        \\                else => {},
+        \\            }
+        \\        }
+        \\        _ = &@field(T, decl.name);
+        \\    }
+        \\}
+        \\
+    );
 }
 
 fn pascal(e: *Emit, s: []const u8) []const u8 {
@@ -60,6 +79,20 @@ fn enumHasEntry(e: *Emit, enum_name: []const u8, entry_name: []const u8) bool {
         };
     }
     return false;
+}
+fn findStruct(e: *Emit, name: []const u8) ?Schema.Struct {
+    for (e.s.structs) |st| if (std.mem.eql(u8, st.name, name)) return st;
+    return null;
+}
+/// Whether every member of the struct gets a default value, i.e. `.{}` is a
+/// valid (and C-INIT-equivalent) initializer for it.
+fn structFullyDefaulted(e: *Emit, name: []const u8) bool {
+    const st = e.findStruct(name) orelse return false;
+    if (st.members) |members| for (members) |m| {
+        if (m.type == .array) continue; // lowered as `count = 0` + `data = null`
+        if (e.memberDefault(m) == null) return false;
+    };
+    return true;
 }
 fn sTypeForStruct(e: *Emit, struct_name: []const u8) ?[]const u8 {
     for (e.s.enums) |en| {
@@ -143,6 +176,9 @@ fn emitEnums(e: *Emit) !void {
         var idx: usize = 0;
         for (en.entries) |me| {
             if (me) |en_entry| {
+                // Implicit values are positional, so an explicit value that skips
+                // ahead would silently misnumber every entry after it.
+                if (en_entry.value) |v| std.debug.assert(v == idx);
                 try e.w.doc(en_entry.doc);
                 try e.w.line("{s} = 0x{x:0>8},", .{ e.entry(en_entry.name), en_entry.value orelse idx });
             }
@@ -170,7 +206,7 @@ fn emitCallbacks(e: *Emit) !void {
         try e.w.open("pub const {s}Callback = *const fn (", .{e.pascal(cb.name)});
         if (cb.args) |args| for (args) |arg| {
             try e.w.doc(arg.doc);
-            try e.w.line("{s}: {s},", .{ e.snake(arg.name), e.typeStr(e.rawType(arg.type, arg.pointer, arg.optional orelse false)) });
+            try e.w.line("{s}: {s},", .{ e.snake(arg.name), e.typeStr(e.cbArgType(arg)) });
         };
         try e.w.line("userdata1: ?*anyopaque,", .{});
         try e.w.line("userdata2: ?*anyopaque,", .{});
@@ -203,10 +239,9 @@ fn emitStructs(e: *Emit) !void {
             try e.w.line("next_in_chain: ?*ChainedStruct = null,", .{});
             try e.w.blank();
         } else if (st.type == .extension) {
-            if (e.sTypeForStruct(st.name)) |stn|
-                try e.w.line("chain: ChainedStruct = .{{ .next = null, .s_type = .{s} }},", .{e.entry(stn)})
-            else
-                try e.w.line("chain: ChainedStruct = .{{ .next = null, .s_type = @enumFromInt(0) }},", .{});
+            const stn = e.sTypeForStruct(st.name) orelse
+                std.debug.panic("extension struct '{s}' has no SType enum entry", .{st.name});
+            try e.w.line("chain: ChainedStruct = .{{ .next = null, .s_type = .{s} }},", .{e.entry(stn)});
             try e.w.blank();
         }
 
@@ -235,7 +270,7 @@ fn emitStructs(e: *Emit) !void {
 
         if (st.type == .extension) if (st.extends) |parents| if (parents.len == 1) {
             try e.w.blank();
-            try e.w.open("pub inline fn {s}(self: *const @This()) {s} {{", .{ e.camel(parents[0]), e.pascal(parents[0]) });
+            try e.w.open("pub fn {s}(self: *const @This()) {s} {{", .{ e.camel(parents[0]), e.pascal(parents[0]) });
             try e.w.line("return .{{ .next_in_chain = @constCast(&self.chain) }};", .{});
             try e.w.close("}}", .{});
         };
@@ -291,7 +326,10 @@ fn returnInfo(e: *Emit, callback: ?[]const u8, returns: ?Schema.ReturnType) Retu
     if (r.type == .bool) return .{ .extern_ty = "Bool", .wrapper_ty = "bool", .into = true };
     if (r.type == .@"enum" and std.mem.eql(u8, r.type.@"enum", "Bool.Optional"))
         return .{ .extern_ty = "Bool.Optional", .wrapper_ty = "?bool", .into = true };
-    const ty = e.typeStr(ZigType.resolve(e.a, r.type, r.pointer, r.optional orelse false));
+    // Returned `void *` (e.g. getMappedRange) is null on failure even though the
+    // schema doesn't say `optional`.
+    const optional = (r.optional orelse false) or r.type == .c_void;
+    const ty = e.typeStr(ZigType.resolve(e.a, r.type, r.pointer, optional));
     return .{ .extern_ty = ty, .wrapper_ty = ty, .into = false };
 }
 
@@ -317,7 +355,7 @@ fn emitFunctionLike(
     try e.w.line("extern fn {s}({s}) {s};", .{ c_name, e.renderList(all, .extern_), ret.extern_ty });
 
     try e.w.doc(doc);
-    try e.w.open("pub inline fn {s}({s}) {s} {{", .{ zig_name, e.renderList(all, .wrapper), ret.wrapper_ty });
+    try e.w.open("pub fn {s}({s}) {s} {{", .{ zig_name, e.renderList(all, .wrapper), ret.wrapper_ty });
     if (ret.into)
         try e.w.line("return ({s}({s})).into();", .{ c_name, e.renderList(all, .forward) })
     else
@@ -353,13 +391,15 @@ fn emitSync(e: *Emit, zig_name: []const u8, cb_name: []const u8, all: []const pa
     const st = status orelse return; // no status -> not a result-style async op
     const status_ty = e.typeStr(e.rawType(st.type, st.pointer, st.optional orelse false));
 
-    // Payload type and the `ok` value expression.
+    // Payload type and the `ok` value expression. Object payloads arrive as
+    // nullable handles (set iff status == success), so the success path unwraps
+    // them and the `Result` payload stays non-optional.
     var payload_ty: []const u8 = "void";
     var ok_val: []const u8 = "{}";
     if (payload.items.len == 1) {
         const p = payload.items[0];
         payload_ty = e.typeStr(e.rawType(p.type, p.pointer, p.optional orelse false));
-        ok_val = e.ident(p.name);
+        ok_val = e.payloadValue(p);
     } else if (payload.items.len > 1) {
         var tw = std.Io.Writer.Allocating.init(e.a);
         var vw = std.Io.Writer.Allocating.init(e.a);
@@ -368,7 +408,7 @@ fn emitSync(e: *Emit, zig_name: []const u8, cb_name: []const u8, all: []const pa
         for (payload.items) |p| {
             const pty = e.typeStr(e.rawType(p.type, p.pointer, p.optional orelse false));
             tw.writer.print("{s}: {s}, ", .{ e.ident(p.name), pty }) catch @panic("OOM");
-            vw.writer.print(".{s} = {s}, ", .{ e.ident(p.name), e.ident(p.name) }) catch @panic("OOM");
+            vw.writer.print(".{s} = {s}, ", .{ e.ident(p.name), e.payloadValue(p) }) catch @panic("OOM");
         }
         tw.writer.writeAll("}") catch @panic("OOM");
         vw.writer.writeAll("}") catch @panic("OOM");
@@ -395,7 +435,16 @@ fn emitSync(e: *Emit, zig_name: []const u8, cb_name: []const u8, all: []const pa
         params.renderList(inner, &sig.writer, .wrapper) catch @panic("OOM");
     }
 
-    try e.w.open("pub inline fn {s}Sync({s}) error{{WaitFailed}}!{s} {{", .{ zig_name, sig.toOwnedSlice() catch @panic("OOM"), result_ty });
+    const sync_doc = std.fmt.allocPrint(e.a,
+        \\Blocking wrapper around `{s}`: waits on the returned future with
+        \\`waitAny` (forever) until the callback fires.
+        \\
+        \\On failure, `err.message` is copied into a thread-local buffer (truncated
+        \\to 1024 bytes) and is only valid until the next `...Sync` call on the
+        \\same thread.
+    , .{zig_name}) catch @panic("OOM");
+    try e.w.doc(sync_doc);
+    try e.w.open("pub fn {s}Sync({s}) error{{WaitFailed}}!{s} {{", .{ zig_name, sig.toOwnedSlice() catch @panic("OOM"), result_ty });
 
     // Capture struct with the C callback.
     try e.w.open("const Capture = struct {{", .{});
@@ -403,7 +452,7 @@ fn emitSync(e: *Emit, zig_name: []const u8, cb_name: []const u8, all: []const pa
     try e.w.line("done: bool = false,", .{});
     var cbsig = std.Io.Writer.Allocating.init(e.a);
     for (cb_args) |arg|
-        cbsig.writer.print("{s}: {s}, ", .{ e.ident(arg.name), e.typeStr(e.rawType(arg.type, arg.pointer, arg.optional orelse false)) }) catch @panic("OOM");
+        cbsig.writer.print("{s}: {s}, ", .{ e.ident(arg.name), e.typeStr(e.cbArgType(arg)) }) catch @panic("OOM");
     try e.w.open("fn cb({s}ud1: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {{", .{cbsig.toOwnedSlice() catch @panic("OOM")});
     try e.w.line("const cap_ptr: *@This() = @ptrCast(@alignCast(ud1.?));", .{});
     try e.w.line("cap_ptr.result = if ({s} == .success) .{{ .ok = {s} }} else .{{ .err = .{{ .status = {s}, .message = {s} }} }};", .{ e.ident(st.name), ok_val, e.ident(st.name), msg_expr });
@@ -451,14 +500,25 @@ fn ident(e: *Emit, s: []const u8) []const u8 {
 
 fn emitBufferSpecials(e: *Emit, obj: []const u8, method: []const u8) !void {
     if (!std.mem.eql(u8, obj, "buffer")) return;
+    const doc =
+        \\Slice view of the mapped range. `size` must be the exact byte length —
+        \\the `whole_map_size` sentinel is not supported here, since the slice
+        \\length has to be known. Returns null if the range could not be mapped.
+    ;
     if (std.mem.eql(u8, method, "get_mapped_range")) {
-        try e.w.open("pub inline fn getMappedRangeSlice(self: *Buffer, offset: usize, size: usize) []u8 {{", .{});
-        try e.w.line("return @as([*]u8, @ptrCast(wgpuBufferGetMappedRange(self, offset, size)))[0..size];", .{});
+        try e.w.doc(doc);
+        try e.w.open("pub fn getMappedRangeSlice(self: *Buffer, offset: usize, size: usize) ?[]u8 {{", .{});
+        try e.w.line("std.debug.assert(size != whole_map_size);", .{});
+        try e.w.line("const ptr = wgpuBufferGetMappedRange(self, offset, size) orelse return null;", .{});
+        try e.w.line("return @as([*]u8, @ptrCast(ptr))[0..size];", .{});
         try e.w.close("}}", .{});
         try e.w.blank();
     } else if (std.mem.eql(u8, method, "get_const_mapped_range")) {
-        try e.w.open("pub inline fn getConstMappedRangeSlice(self: *Buffer, offset: usize, size: usize) []const u8 {{", .{});
-        try e.w.line("return @as([*]const u8, @ptrCast(wgpuBufferGetConstMappedRange(self, offset, size)))[0..size];", .{});
+        try e.w.doc(doc);
+        try e.w.open("pub fn getConstMappedRangeSlice(self: *Buffer, offset: usize, size: usize) ?[]const u8 {{", .{});
+        try e.w.line("std.debug.assert(size != whole_map_size);", .{});
+        try e.w.line("const ptr = wgpuBufferGetConstMappedRange(self, offset, size) orelse return null;", .{});
+        try e.w.line("return @as([*]const u8, @ptrCast(ptr))[0..size];", .{});
         try e.w.close("}}", .{});
         try e.w.blank();
     }
@@ -478,13 +538,31 @@ fn rawType(e: *Emit, ty: Schema.Type, pointer: ?Schema.Parameter.Pointer, option
     return ZigType.resolve(e.a, ty, pointer, optional);
 }
 
+/// The Zig type of a callback argument. Object payloads are set iff the
+/// operation succeeded — C passes null otherwise — so they are always exposed
+/// as nullable handles even though the schema doesn't mark them `optional`.
+fn cbArgType(e: *Emit, arg: Schema.Parameter) ZigType {
+    if (arg.type == .object and arg.pointer == null)
+        return ZigType.resolve(e.a, arg.type, arg.pointer, true);
+    return e.rawType(arg.type, arg.pointer, arg.optional orelse false);
+}
+
+/// The success-path expression for a callback payload arg inside a `...Sync`
+/// capture: nullable object handles are unwrapped (they are non-null on success).
+fn payloadValue(e: *Emit, p: Schema.Parameter) []const u8 {
+    const name = e.ident(p.name);
+    if (p.type == .object and p.pointer == null)
+        return std.fmt.allocPrint(e.a, "{s}.?", .{name}) catch @panic("OOM");
+    return name;
+}
+
 fn memberDefault(e: *Emit, m: Schema.Parameter) ?[]const u8 {
     const optional = m.optional orelse false;
     if (m.type == .array) return null;
     if (m.pointer != null) return if (optional) "null" else null;
     if (m.type == .object) return if (optional) "null" else null;
     if (m.type == .c_void) return "null";
-    if (m.type == .callback) return std.fmt.allocPrint(e.a, "std.mem.zeroes({s})", .{e.infoName(m.type.callback)}) catch @panic("OOM");
+    if (m.type == .callback) return ".{}";
     if (m.default) |def| return e.defaultExpr(m.type, def);
     return e.implicitDefault(m.type);
 }
@@ -532,8 +610,11 @@ fn implicitDefault(e: *Emit, ty: Schema.Type) ?[]const u8 {
             if (e.enumHasEntry(name, "undefined")) break :blk ".undefined";
             break :blk null;
         },
-        .@"struct" => |name| std.fmt.allocPrint(e.a, "std.mem.zeroes({s})", .{e.pascal(name)}) catch @panic("OOM"),
-        .callback => |name| std.fmt.allocPrint(e.a, "std.mem.zeroes({s})", .{e.infoName(name)}) catch @panic("OOM"),
+        // `.{}` (not `std.mem.zeroes`) so the nested struct's own defaults apply;
+        // a nested struct with required members (e.g. VertexState.module) gets no
+        // default at all, forcing callers to provide it.
+        .@"struct" => |name| if (e.structFullyDefaulted(name)) ".{}" else null,
+        .callback => ".{}",
         .object, .c_void => "null",
         .array => null,
     };
