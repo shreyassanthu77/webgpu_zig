@@ -16,7 +16,7 @@ pub fn link(
         }),
     });
     if (b.lazyImport(BuildZig, "WGVK")) |wgvk| {
-        const lib = try wgvk.buildLib(b, .{
+        const lib: *std.Build.Step.Compile = try wgvk.buildLib(b, .{
             .target = target,
             .optimize = optimize,
             .use_vma = false,
@@ -26,5 +26,16 @@ pub fn link(
 
         module.linkLibrary(lib);
         module.linkLibrary(wgvk_stubs);
+
+        switch (target.result.os.tag) {
+            .macos => {
+                if (b.lazyDependency("xcode_frameworks", .{})) |frameworks| {
+                    module.addSystemFrameworkPath(frameworks.path("Frameworks"));
+                    module.addSystemIncludePath(frameworks.path("include"));
+                    module.addLibraryPath(frameworks.path("lib"));
+                }
+            },
+            else => {},
+        }
     }
 }
