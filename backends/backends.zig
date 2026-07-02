@@ -9,6 +9,7 @@ pub const Backend = enum {
 };
 
 pub fn link(
+    BuildZig: type,
     b: *std.Build,
     module: *std.Build.Module,
     backend: Backend,
@@ -17,7 +18,7 @@ pub fn link(
 ) void {
     switch (backend) {
         .none => {},
-        .wgvk => wgvk.link(b, module, target, optimize),
+        .wgvk => wgvk.link(BuildZig, b, module, target, optimize),
         .wgpu_native => wgpu_native.link(b, module, target, optimize),
     }
 }

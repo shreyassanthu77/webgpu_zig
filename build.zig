@@ -14,6 +14,8 @@ pub fn build(b: *std.Build) void {
         "backend",
         "Select the WebGPU backend to use",
     ) orelse .none;
+    const skip_build = b.option(bool, "skip-build", "Skips everything in the build step. used internally") orelse false;
+    if (skip_build) return;
 
     const bindings_gen = BindingsGen.init(b);
 
@@ -23,7 +25,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    backends.link(b, webgpu_mod, backend, target, optimize);
+    backends.link(@This(), b, webgpu_mod, backend, target, optimize);
 
     if (make_local_copy) {
         const usf = b.addUpdateSourceFiles();
@@ -70,7 +72,7 @@ pub fn build(b: *std.Build) void {
                 }),
                 .use_llvm = true, // TODO: remove once the native backend is fixed
             });
-            backends.link(b, test_exe.root_module, backend, target, optimize);
+            backends.link(@This(), b, test_exe.root_module, backend, target, optimize);
 
             check_step.dependOn(&test_exe.step);
 
@@ -78,6 +80,28 @@ pub fn build(b: *std.Build) void {
             test_step.dependOn(&run_test_exe.step);
         }
     }
+}
+
+pub const BuildOptions = struct {
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    backend: Backend = .none,
+
+    pub const Backend = backends.Backend;
+};
+pub fn buildWebgpu(b: *std.Build, options: BuildOptions) void {
+    const self = b.dependencyFromBuildZig(@This(), .{
+        .skip_build = true,
+    });
+    const gen = BindingsGen.init(self.builder);
+    const bindings_file = gen.generateBindings(false);
+    const webgpu_mod = self.builder.createModule(.{
+        .root_source_file = bindings_file,
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    backends.link(@This(), self.builder, webgpu_mod, options.backend, options.target, options.optimize);
+    return webgpu_mod;
 }
 
 const BindingsGen = struct {

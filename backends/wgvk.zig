@@ -1,6 +1,7 @@
 const std = @import("std");
 
 pub fn link(
+    BuildZig: type,
     b: *std.Build,
     module: *std.Build.Module,
     target: std.Build.ResolvedTarget,
@@ -14,12 +15,16 @@ pub fn link(
             .optimize = optimize,
         }),
     });
+    if (b.lazyImport(BuildZig, "WGVK")) |wgvk| {
+        const lib = try wgvk.buildLib(b, .{
+            .target = target,
+            .optimize = optimize,
+            .use_vma = false,
+            .enable_x11 = true,
+            .enable_wayland = true,
+        });
 
-    if (b.lazyDependency("WGVK", .{
-        .target = target,
-        .optimize = optimize,
-    })) |wgvk| {
-        module.linkLibrary(wgvk.artifact("wgvk"));
+        module.linkLibrary(lib);
         module.linkLibrary(wgvk_stubs);
     }
 }
