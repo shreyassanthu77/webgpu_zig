@@ -1,7 +1,12 @@
 const std = @import("std");
-pub const wgvk = @import("wgvk.zig");
+const wgvk = @import("wgvk.zig");
+const wgpu_native = @import("wgpu-native.zig");
 
-pub const Backend = enum { wgvk, none };
+pub const Backend = enum {
+    none,
+    wgvk,
+    wgpu_native,
+};
 
 pub fn link(
     b: *std.Build,
@@ -11,7 +16,8 @@ pub fn link(
     optimize: std.builtin.OptimizeMode,
 ) void {
     switch (backend) {
-        .wgvk => wgvk.link(b, module, target, optimize),
         .none => {},
+        .wgvk => wgvk.link(b, module, target, optimize),
+        .wgpu_native => wgpu_native.link(b, module, target, optimize),
     }
 }
