@@ -93,7 +93,7 @@ pub const BuildOptions = struct {
 
     pub const Backend = backends.Backend;
 };
-pub fn buildWebgpu(b: *std.Build, options: BuildOptions) void {
+pub fn buildWebgpu(b: *std.Build, options: BuildOptions) *std.Build.Module {
     const self = b.dependencyFromBuildZig(@This(), .{
         .skip_build = true,
     });
