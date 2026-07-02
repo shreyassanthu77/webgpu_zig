@@ -67,6 +67,9 @@ pub fn build(b: *std.Build) void {
                 .use_llvm = true, // TODO: remove once the native backend is fixed
             });
             backends.link(@This(), b, test_exe.root_module, backend, target, optimize);
+            if (backend == .wgpu_native and target.result.os.tag == .windows) {
+                test_exe.bundle_compiler_rt = false;
+            }
 
             check_step.dependOn(&test_exe.step);
 
