@@ -7,7 +7,7 @@
             .hash = "N-V-__8AAPbnCwB6Tt_IqYyVGVYYP7A3RJARj6YutO2ZEU6h",
         },
         .WGVK = .{
-            .url = "git+https://github.com/shreyassanthu77/WGVK.git#c0575414c50bf78219e6428615b06408439a75de",
+            .url = "git+https://github.com/manuel5975p/WGVK.git#117bfce2754285391ebc34231fa0040d7c2413d4",
             .hash = "WGVK-0.0.1-toLO5XILYAHyr2fT-lSY97draLqEI_ukHi0ew7IkoouR",
             .lazy = true,
         },

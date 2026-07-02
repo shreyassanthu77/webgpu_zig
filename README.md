@@ -9,7 +9,7 @@ Auto-generated Zig bindings for [webgpu.h](https://github.com/webgpu-native/webg
 - **Zero-cost abstractions**[^1] on top of the raw C API.
 - **zig in the frontend, rust in the backend for more brrrrr**[^2]
 - sync helpers like `requestAdapterSync`, `requestDeviceSync`, etc. because async GPU APIs are annoying
-- optional backends: [wgpu-native](https://github.com/gfx-rs/wgpu-native) or [WGVK](https://github.com/shreyassanthu77/WGVK)
+- optional backends: [wgpu-native](https://github.com/gfx-rs/wgpu-native) or [WGVK](https://github.com/manuel5975p/WGVK)
 - works on linux, windows, macos, ios, android
 
 ## Usage
