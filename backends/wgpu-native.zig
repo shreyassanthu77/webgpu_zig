@@ -14,7 +14,10 @@ pub fn link(
     if (!has_dependency) panic("wgpu-native is not available for this target", .{});
 
     if (b.lazyDependency(dependency_name, .{})) |wgpu_native| {
-        const lib_path = wgpu_native.path("lib/libwgpu_native.a");
+        const lib_path = wgpu_native.path(if (target.result.os.tag == .windows and target.result.abi == .msvc)
+            "lib/libwgpu_native.lib"
+        else
+            "lib/libwgpu_native.a");
         module.addObjectFile(lib_path);
         module.link_libc = true;
 
