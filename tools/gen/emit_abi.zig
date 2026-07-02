@@ -74,6 +74,13 @@ pub fn run(a: std.mem.Allocator, s: Schema, out: *std.Io.Writer) !void {
         try w.line("    try test_helpers.expectFnAbi(@TypeOf({s}), c.WGPUProc{s});", .{ c_name, c_name[4..] });
         try w.line("}}", .{});
     }
+
+    try out.writeAll(
+        \\test "reference all declarations" {
+        \\    @setEvalBranchQuota(1_000_000);
+        \\    test_helpers.refAllDeclsRecursive(@This());
+        \\}
+    );
 }
 
 fn emitFnTest(w: *Writer, a: std.mem.Allocator, container: []const u8, c_name: []const u8) !void {

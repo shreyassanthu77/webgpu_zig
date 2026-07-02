@@ -23,13 +23,6 @@ pub fn run(a: std.mem.Allocator, s: Schema, out: *std.Io.Writer) !void {
     try e.emitStructs();
     try e.emitObjects();
     try e.emitFunctions();
-
-    try out.writeAll(
-        \\test "reference all declarations" {
-        \\    @setEvalBranchQuota(1_000_000);
-        \\    test_helpers.refAllDeclsRecursive(@This());
-        \\}
-    );
 }
 
 fn pascal(e: *Emit, s: []const u8) []const u8 {
