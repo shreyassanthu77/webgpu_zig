@@ -184,7 +184,7 @@ You can still construct chains manually when you need multiple extensions or spe
 | -------------- | ------------ |
 | `none`         | bindings only, no native lib linked |
 | `wgpu_native`  | links prebuilt wgpu-native binaries |
-| `wgvk`         | links my WGVK vulkan backend |
+| `wgvk`         | links WGVK vulkan backend by manuel5975p |
 
 ## local dev commands
 
