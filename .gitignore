@@ -2,4 +2,3 @@
 zig-out
 zig-pkg
 /tools/gen/schema.ts
-/src/bindings.zig
