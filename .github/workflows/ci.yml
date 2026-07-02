@@ -1,0 +1,42 @@
+name: Test
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Run Tests (all configs on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+            target: x86_64-linux-gnu
+          - os: windows-latest
+            arch: x86_64
+            target: x86_64-windows-msvc
+          - os: macos-latest
+            arch: aarch64
+            target: aarch64-macos
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Run tests (wgvk)
+        run: |
+          zig build test -Dtarget=${{ matrix.target }} -Dbackend=wgvk --summary all --verbose
+
+      - name: Run tests (wgpu_native)
+        run: |
+          zig build test -Dtarget=${{ matrix.target }} -Dbackend=wgpu_native --summary all --verbose
