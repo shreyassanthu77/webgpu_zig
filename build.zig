@@ -9,7 +9,7 @@ pub fn build(b: *std.Build) void {
         "backend",
         "Select the WebGPU backend to use",
     ) orelse .none;
-    const skip_build = b.option(bool, "skip-build", "Skips everything in the build step. other than the webgpu module") orelse false;
+    const skip_build = b.option(bool, "skip_build", "Skips everything in the build step. other than the webgpu module") orelse false;
     if (skip_build) return;
 
     const bindings_gen = BindingsGen.init(b);
