@@ -15,7 +15,7 @@ pub fn link(
 
     if (b.lazyDependency(dependency_name, .{})) |wgpu_native| {
         const lib_path = wgpu_native.path(if (target.result.os.tag == .windows and target.result.abi == .msvc)
-            "lib/libwgpu_native.lib"
+            "lib/wgpu_native.lib"
         else
             "lib/libwgpu_native.a");
         module.addObjectFile(lib_path);
