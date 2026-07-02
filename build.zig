@@ -8,6 +8,13 @@ pub fn build(b: *std.Build) void {
         "make-local-copy",
         "Generate a local copy of the bindings.zig file",
     ) orelse false;
+    // hide abi tests behind a flag so WGVK wont get pulled in
+    // when a user imports webgpu_zig as a library
+    const enable_abi_tests = b.option(
+        bool,
+        "abi-tests",
+        "Enable ABI tests",
+    ) orelse false;
 
     const bindings_gen = BindingsGen.init(b);
 
@@ -52,33 +59,35 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     }).createModule();
-    inline for (&.{
+    inline for ([_]?struct { []const u8, std.Build.LazyPath }{
         .{ "gen-unit-tests", b.path("tools/gen/tests.zig") },
         .{ "prelude", b.path("src/prelude_test.zig") },
-        .{ "webgpu", test_bindings_file },
-    }) |test_file| {
-        const test_exe = b.addTest(.{
-            .name = test_file.@"0",
-            .root_module = b.createModule(.{
-                .root_source_file = test_file.@"1",
+        if (enable_abi_tests) .{ "webgpu", test_bindings_file } else null,
+    }) |maybe_test_file| {
+        if (maybe_test_file) |test_file| {
+            const test_exe = b.addTest(.{
+                .name = test_file.@"0",
+                .root_module = b.createModule(.{
+                    .root_source_file = test_file.@"1",
+                    .target = target,
+                    .optimize = optimize,
+                    .imports = &.{
+                        .{ .name = "c", .module = webgpu_h_mod },
+                    },
+                }),
+                .use_llvm = true, // TODO: remove once the native backend is fixed
+            });
+            const run_test_exe = b.addRunArtifact(test_exe);
+            test_step.dependOn(&run_test_exe.step);
+            check_step.dependOn(&test_exe.step);
+
+            if (enable_abi_tests) if (b.lazyDependency("WGVK", .{
                 .target = target,
                 .optimize = optimize,
-                .imports = &.{
-                    .{ .name = "c", .module = webgpu_h_mod },
-                },
-            }),
-            .use_llvm = true, // TODO: remove once the native backend is fixed
-        });
-        const run_test_exe = b.addRunArtifact(test_exe);
-        test_step.dependOn(&run_test_exe.step);
-        check_step.dependOn(&test_exe.step);
-
-        if (b.lazyDependency("WGVK", .{
-            .target = target,
-            .optimize = optimize,
-        })) |wgvk| {
-            test_exe.root_module.linkLibrary(wgvk.artifact("wgvk"));
-            test_exe.root_module.linkLibrary(wgvk_stubs);
+            })) |wgvk| {
+                test_exe.root_module.linkLibrary(wgvk.artifact("wgvk"));
+                test_exe.root_module.linkLibrary(wgvk_stubs);
+            };
         }
     }
 }
