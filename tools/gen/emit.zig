@@ -23,27 +23,12 @@ pub fn run(a: std.mem.Allocator, s: Schema, out: *std.Io.Writer) !void {
     try e.emitStructs();
     try e.emitObjects();
     try e.emitFunctions();
-    // Recursively reference every declaration (std.testing.refAllDecls is not
-    // recursive, so it would miss object methods) — this forces semantic
-    // analysis and codegen of all wrapper bodies, which nothing else touches.
+
     try out.writeAll(
         \\test "reference all declarations" {
         \\    @setEvalBranchQuota(1_000_000);
-        \\    refAllDeclsRecursive(@This());
+        \\    test_helpers.refAllDeclsRecursive(@This());
         \\}
-        \\
-        \\fn refAllDeclsRecursive(comptime T: type) void {
-        \\    inline for (comptime std.meta.declarations(T)) |decl| {
-        \\        if (@TypeOf(@field(T, decl.name)) == type) {
-        \\            switch (@typeInfo(@field(T, decl.name))) {
-        \\                .@"struct", .@"enum", .@"union", .@"opaque" => refAllDeclsRecursive(@field(T, decl.name)),
-        \\                else => {},
-        \\            }
-        \\        }
-        \\        _ = &@field(T, decl.name);
-        \\    }
-        \\}
-        \\
     );
 }
 
@@ -128,9 +113,7 @@ fn emitBitflags(e: *Emit) !void {
         try e.w.open("pub const {s} = packed struct(u64) {{", .{e.pascal(bf.name)});
 
         // The first "plain" entry (no value/combination) is the all-zero value; it
-        // becomes a named `= .{}` constant, NOT bit 0. Every following plain entry
-        // occupies the next bit. (The old generator gave bit 0 to this zero entry,
-        // shifting every real flag by one — a real ABI bug the abi tests now catch.)
+        // becomes a named `= .{}` constant, NOT bit 0.
         var zero_entry: ?Schema.Bitflag.Entry = null;
         var bits: usize = 0;
         for (bf.entries) |en| {
@@ -193,8 +176,6 @@ fn emitEnums(e: *Emit) !void {
 fn emitChainedStruct(e: *Emit) !void {
     try e.w.open("pub const ChainedStruct = extern struct {{", .{});
     try e.w.line("next: ?*ChainedStruct = null,", .{});
-    // No INIT default for sType in C; SType is non-exhaustive with no `undefined`
-    // entry, so leave it required and let extension structs set it via `chain`.
     try e.w.line("s_type: SType,", .{});
     try e.w.close("}};", .{});
     try e.w.blank();
@@ -367,15 +348,10 @@ fn emitFunctionLike(
         try e.emitSync(zig_name, callback.?, all, self_ty.?);
 }
 
-/// Emits a blocking `<name>Sync` wrapper for an async method: sets up an
-/// internal callback that captures the result, kicks off the async op, then
-/// spins `waitAny` (forever) until the callback fires. Wait failures surface as
-/// `error.WaitFailed`; the operation's own outcome is a `Result` union.
 fn emitSync(e: *Emit, zig_name: []const u8, cb_name: []const u8, all: []const params.Param, self_ty: []const u8) !void {
     const cb = e.findCallback(cb_name) orelse return;
     const cb_args = cb.args orelse return;
 
-    // Classify callback args into status / message / payload.
     var status: ?Schema.Parameter = null;
     var message: ?Schema.Parameter = null;
     var payload: std.ArrayList(Schema.Parameter) = .empty;
@@ -391,9 +367,6 @@ fn emitSync(e: *Emit, zig_name: []const u8, cb_name: []const u8, all: []const pa
     const st = status orelse return; // no status -> not a result-style async op
     const status_ty = e.typeStr(e.rawType(st.type, st.pointer, st.optional orelse false));
 
-    // Payload type and the `ok` value expression. Object payloads arrive as
-    // nullable handles (set iff status == success), so the success path unwraps
-    // them and the `Result` payload stays non-optional.
     var payload_ty: []const u8 = "void";
     var ok_val: []const u8 = "{}";
     if (payload.items.len == 1) {
@@ -462,7 +435,6 @@ fn emitSync(e: *Emit, zig_name: []const u8, cb_name: []const u8, all: []const pa
 
     try e.w.line("var cap: Capture = .{{}};", .{});
 
-    // Build callback_info and kick off the async op via the nice wrapper.
     try e.w.line("const callback_info: {s} = .{{ .mode = .wait_any_only, .callback = &Capture.cb, .userdata1 = &cap }};", .{e.infoName(cb_name)});
     try e.w.line("const future = self.{s}({s});", .{ zig_name, e.renderList(all[1..], .wrapper_call) });
     try e.w.line("var infos = [_]FutureWaitInfo{{.{{ .future = future }}}};", .{});
@@ -483,8 +455,6 @@ fn findCallback(e: *Emit, name: []const u8) ?Schema.Callback {
     return null;
 }
 
-/// Like `snake`, but also escapes primitive type names (e.g. `type`), which are
-/// legal as struct fields but not as `var`/`const`/parameter identifiers.
 fn ident(e: *Emit, s: []const u8) []const u8 {
     const snaked = e.snake(s);
     if (snaked.len > 0 and snaked[0] == '@') return snaked;
@@ -578,7 +548,6 @@ fn defaultExpr(e: *Emit, ty: Schema.Type, def: Schema.Parameter.Default) ?[]cons
             if (std.mem.eql(u8, s, "none")) return if (ty == .bitflag) ".{}" else null;
             if (ty == .bitflag) return e.bitflagDefault(ty.bitflag, s);
             if (ty == .@"enum") return std.fmt.allocPrint(e.a, ".{s}", .{e.entry(s)}) catch @panic("OOM");
-            // Numeric literal given as a string (e.g. "0xFFFFFFFF") on an integer field.
             if (isIntType(ty) and looksNumeric(s)) return s;
             return null;
         },
@@ -610,9 +579,6 @@ fn implicitDefault(e: *Emit, ty: Schema.Type) ?[]const u8 {
             if (e.enumHasEntry(name, "undefined")) break :blk ".undefined";
             break :blk null;
         },
-        // `.{}` (not `std.mem.zeroes`) so the nested struct's own defaults apply;
-        // a nested struct with required members (e.g. VertexState.module) gets no
-        // default at all, forcing callers to provide it.
         .@"struct" => |name| if (e.structFullyDefaulted(name)) ".{}" else null,
         .callback => ".{}",
         .object, .c_void => "null",

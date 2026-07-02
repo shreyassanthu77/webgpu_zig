@@ -54,6 +54,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     }).createModule();
+    const test_helpers_mod = b.createModule(.{
+        .root_source_file = b.path("src/test_helpers.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     inline for ([_]?struct { []const u8, std.Build.LazyPath }{
         .{ "gen-unit-tests", b.path("tools/gen/tests.zig") },
         .{ "prelude", b.path("src/prelude_test.zig") },
@@ -68,6 +73,7 @@ pub fn build(b: *std.Build) void {
                     .optimize = optimize,
                     .imports = &.{
                         .{ .name = "c", .module = webgpu_h_mod },
+                        .{ .name = "test_helpers", .module = test_helpers_mod },
                     },
                 }),
                 .use_llvm = true, // TODO: remove once the native backend is fixed
