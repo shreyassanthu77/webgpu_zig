@@ -9,8 +9,8 @@ Adds corresponding structs like `WGPUEmscriptenSurfaceSourceCanvasHTMLSelector`,
 
 ## Plan for Seamless Integration
 
-- Create JSON extension files (e.g., `wgpu_native_ext.json` and `wgvk_ext.json`) structured exactly like the upstream `webgpu.json` but containing only the backend-specific `enums`, `structs`, `functions`, and `objects`.
-- Modify the `tools/gen/main.zig` script to accept an optional list of extension JSON files as command-line arguments.
-- Update the generator logic in `tools/gen/main.zig` to merge the ASTs in memory. Specifically, concatenate the arrays for `structs`, `functions`, and `objects`. For `enums` that already exist (like `SType`), merge their `entries` arrays.
-- Update `build.zig` to conditionally pass the appropriate extension JSON file to the `gen-bindings` step depending on the `backend` build option (e.g., if `backend == .wgpu_native`, pass `wgpu_native_ext.json`).
-- This ensures the generated bindings (`src/bindings.zig`) perfectly reflect the capabilities of the chosen backend while keeping the generation code clean and maintainable.
+- Create JSON extension files (e.g., `wgpu_native_ext.json` and `wgvk_ext.json`) containing only the backend-specific `enums`, `structs`, `functions`, and `objects`.
+- Generate a separate module (e.g., `wgpu_native_bindings.zig` or `wgvk_bindings.zig`) for backend-specific features instead of modifying the agnostic `bindings.zig`, keeping the agnostic bindings purely tracked in git.
+- For `SType` extensions, generate an extended `SType` enum in the new module with an `into()` method that casts back to the original agnostic `webgpu.SType`.
+- Modify the `tools/gen/main.zig` script (or add a new script) to generate these backend extension modules, allowing them to import and interoperate with the base agnostic bindings.
+- Update `build.zig` to expose this new extension module to consumers when they select a specific backend, without affecting the base `webgpu` module.
