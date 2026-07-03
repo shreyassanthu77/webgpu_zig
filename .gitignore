@@ -2,3 +2,7 @@
 zig-out
 zig-pkg
 /tools/gen/schema.ts
+zig-linux-x86_64-*/
+zig-linux-x86_64-*.tar.xz
+zig-x86_64-linux-*/
+zig-x86_64-linux-*.tar.xz
