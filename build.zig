@@ -16,9 +16,11 @@ pub fn build(b: *std.Build) void {
     const check_step = b.step("check", "Build everything without running tests");
     const test_step = b.step("test", "Run all tests");
     const enable_abi_tests = backend != .none;
-    const test_bindings_file = bindings_gen.generateBindings(true);
+    const test_bindings_file = bindings_gen.generateBindings(true, backend);
+    const header_lazy_path = backends.headerPath(b, backend, target, optimize) orelse
+        bindings_gen.upstream.path("webgpu.h");
     const webgpu_h_mod = b.addTranslateC(.{
-        .root_source_file = bindings_gen.upstream.path("webgpu.h"),
+        .root_source_file = header_lazy_path,
         .target = target,
         .optimize = optimize,
     }).createModule();
@@ -62,7 +64,7 @@ pub fn build(b: *std.Build) void {
     const gen_step = b.step("gen", "Generate bindings to src/bindings.zig");
     const usf = b.addUpdateSourceFiles();
     usf.addCopyFileToSource(
-        bindings_gen.generateBindings(false),
+        bindings_gen.generateBindings(false, backend),
         "src/bindings.zig",
     );
     // test first and only then gen. gen should fail if test fails
@@ -82,7 +84,7 @@ pub fn buildWebgpu(b: *std.Build, options: BuildOptions) *std.Build.Module {
         .skip_build = true,
     });
     const gen = BindingsGen.init(self.builder);
-    const bindings_file = gen.generateBindings(false);
+    const bindings_file = gen.generateBindings(false, options.backend);
     const webgpu_mod = self.builder.createModule(.{
         .root_source_file = bindings_file,
         .target = options.target,
@@ -122,12 +124,16 @@ const BindingsGen = struct {
     pub fn generateBindings(
         self: *const BindingsGen,
         enable_abi_tests: bool,
+        backend: backends.Backend,
     ) std.Build.LazyPath {
         const b = self.b;
         const run_bindings_generator = b.addRunArtifact(self.bindings_generator);
         run_bindings_generator.has_side_effects = true;
         if (enable_abi_tests) run_bindings_generator.addArg("--abi-checks");
         run_bindings_generator.addFileArg(self.webgpu_json);
+        if (backends.overlay(b, backend)) |ov| {
+            run_bindings_generator.addFileArg(ov);
+        }
         const bindings_file = run_bindings_generator.addOutputFileArg("bindings.zig");
         run_bindings_generator.addFileArg(b.path("src/prelude.zig"));
 

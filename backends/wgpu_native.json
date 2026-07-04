@@ -1,0 +1,745 @@
+{
+  "constants": [],
+  "enums": [
+    {
+      "doc": "SType values for wgpu-native extension structs (0x0003XXXX range).\n",
+      "name": "s_type",
+      "entries": [
+        { "doc": "Identifies WGPUDeviceExtras.\n", "name": "device_extras", "value": 196609 },
+        { "doc": "Identifies WGPUNativeLimits.\n", "name": "native_limits", "value": 196610 },
+        { "doc": "Identifies WGPUShaderSourceGLSL.\n", "name": "shader_source_GLSL", "value": 196611 },
+        { "doc": "Identifies WGPUInstanceExtras.\n", "name": "instance_extras", "value": 196612 },
+        { "doc": "Identifies WGPUBindGroupEntryExtras.\n", "name": "bind_group_entry_extras", "value": 196613 },
+        { "doc": "Identifies WGPUBindGroupLayoutEntryExtras.\n", "name": "bind_group_layout_entry_extras", "value": 196614 },
+        { "doc": "Identifies WGPUQuerySetDescriptorExtras.\n", "name": "query_set_descriptor_extras", "value": 196615 },
+        { "doc": "Identifies WGPUSurfaceConfigurationExtras.\n", "name": "surface_configuration_extras", "value": 196616 },
+        { "doc": "Identifies WGPUSurfaceSourceSwapChainPanel.\n", "name": "surface_source_swap_chain_panel", "value": 196617 },
+        { "doc": "Identifies WGPUPrimitiveStateExtras.\n", "name": "primitive_state_extras", "value": 196618 },
+        { "doc": "Identifies WGPUSamplerDescriptorExtras.\n", "name": "sampler_descriptor_extras", "value": 196619 }
+      ]
+    },
+    {
+      "doc": "Native-only device features that extend the standard WGPUFeatureName.\n",
+      "name": "feature_name",
+      "entries": [
+        { "doc": "Allows the use of immediate data in render/compute passes.\n", "name": "immediates", "value": 196609 },
+        { "doc": "Enables device-specific texture format features.\n", "name": "texture_adapter_specific_format_features", "value": 196610 },
+        { "doc": "Allows a buffer containing the actual number of draw calls.\n", "name": "multi_draw_indirect_count", "value": 196612 },
+        { "doc": "Enables bindings of writable storage buffers and textures visible to vertex shaders.\n", "name": "vertex_writable_storage", "value": 196613 },
+        { "doc": "Allows uniform arrays of textures in shaders.\n", "name": "texture_binding_array", "value": 196614 },
+        { "doc": "Allows non-uniform indexing of sampled texture and storage buffer arrays.\n", "name": "sampled_texture_and_storage_buffer_array_non_uniform_indexing", "value": 196615 },
+        { "doc": "Enables pipeline statistics queries.\n", "name": "pipeline_statistics_query", "value": 196616 },
+        { "doc": "Allows uniform arrays of storage buffers or textures.\n", "name": "storage_resource_binding_array", "value": 196617 },
+        { "doc": "Allows bind groups with fewer bindings than required.\n", "name": "partially_bound_binding_array", "value": 196618 },
+        { "doc": "Enables normalized 16-bit texture formats.\n", "name": "texture_format16bit_norm", "value": 196619 },
+        { "doc": "Enables ASTC HDR compressed textures.\n", "name": "texture_compression_astc_hdr", "value": 196620 },
+        { "doc": "Removes WebGPU restriction on MAP_READ/MAP_WRITE pairing.\n", "name": "mappable_primary_buffers", "value": 196622 },
+        { "doc": "Allows arrays of buffers in shaders.\n", "name": "buffer_binding_array", "value": 196623 },
+        { "doc": "Allows non-uniform indexing of storage texture arrays.\n", "name": "storage_texture_array_non_uniform_indexing", "value": 196624 },
+        { "doc": "Allows clamp-to-zero address mode.\n", "name": "address_mode_clamp_to_zero", "value": 196625 },
+        { "doc": "Allows clamp-to-border address mode.\n", "name": "address_mode_clamp_to_border", "value": 196626 },
+        { "doc": "Allows wireframe rendering (polygon mode line).\n", "name": "polygon_mode_line", "value": 196627 },
+        { "doc": "Allows point rendering (polygon mode point).\n", "name": "polygon_mode_point", "value": 196628 },
+        { "doc": "Enables conservative rasterization.\n", "name": "conservative_rasterization", "value": 196629 },
+        { "doc": "Enables clear to zero for textures.\n", "name": "clear_texture", "value": 196630 },
+        { "doc": "Enables multiview render passes.\n", "name": "multiview", "value": 196632 },
+        { "doc": "Enables 64-bit types for vertex attributes.\n", "name": "vertex_attribute_64bit", "value": 196633 },
+        { "doc": "Allows creation of NV12 textures.\n", "name": "texture_format_nv12", "value": 196634 },
+        { "doc": "Allows ray-tracing queries in shaders.\n", "name": "ray_query", "value": 196636 },
+        { "doc": "Enables 64-bit floating point in SPIR-V shaders.\n", "name": "shader_f64", "value": 196637 },
+        { "doc": "Allows i16 in shaders (SPIR-V passthrough only).\n", "name": "shader_i16", "value": 196638 },
+        { "doc": "Allows early_depth_test attribute in shaders.\n", "name": "shader_early_depth_test", "value": 196640 },
+        { "doc": "Allows subgroup operations in compute/fragment shaders.\n", "name": "subgroup", "value": 196641 },
+        { "doc": "Allows subgroup operations in vertex shaders.\n", "name": "subgroup_vertex", "value": 196642 },
+        { "doc": "Allows subgroup barrier in compute shaders.\n", "name": "subgroup_barrier", "value": 196643 },
+        { "doc": "Allows timestamp queries on command encoders.\n", "name": "timestamp_query_inside_encoders", "value": 196644 },
+        { "doc": "Allows timestamp queries inside render/compute passes.\n", "name": "timestamp_query_inside_passes", "value": 196645 },
+        { "doc": "Allows i64 and u64 in shaders.\n", "name": "shader_int64", "value": 196646 },
+        { "doc": "Allows f32 atomic operations in shaders.\n", "name": "shader_float32_atomic", "value": 196647 },
+        { "doc": "Enables image atomic operations on R32Uint/Sint textures.\n", "name": "texture_atomic", "value": 196648 },
+        { "doc": "Allows creation of P010 textures.\n", "name": "texture_format_p010", "value": 196649 },
+        { "doc": "Allows pipeline cache objects.\n", "name": "pipeline_cache", "value": 196651 },
+        { "doc": "Allows i64/u64 atomic min and max.\n", "name": "shader_int64_atomic_min_max", "value": 196652 },
+        { "doc": "Allows all i64/u64 atomic operations.\n", "name": "shader_int64_atomic_all_ops", "value": 196653 },
+        { "doc": "Enables R64Uint image atomic min and max.\n", "name": "texture_int64_atomic", "value": 196656 },
+        { "doc": "Enables shader barycentric coordinates.\n", "name": "shader_barycentrics", "value": 196663 },
+        { "doc": "Enables multiview with partial layer rendering.\n", "name": "selective_multiview", "value": 196664 },
+        { "doc": "Enables multisample array textures.\n", "name": "multisample_array", "value": 196666 },
+        { "doc": "Enables cooperative matrix operations.\n", "name": "cooperative_matrix", "value": 196667 },
+        { "doc": "Enables shader per-vertex attributes.\n", "name": "shader_per_vertex", "value": 196668 },
+        { "doc": "Enables shader draw_index builtin.\n", "name": "shader_draw_index", "value": 196669 },
+        { "doc": "Allows arrays of acceleration structures in shaders.\n", "name": "acceleration_structure_binding_array", "value": 196670 },
+        { "doc": "Enables @coherent memory decoration on storage buffers.\n", "name": "memory_decoration_coherent", "value": 196671 },
+        { "doc": "Enables @volatile memory decoration on storage buffers.\n", "name": "memory_decoration_volatile", "value": 196672 }
+      ]
+    },
+    {
+      "doc": "Status codes for surface texture acquisition, extended by wgpu-native.\n",
+      "name": "surface_get_current_texture_status",
+      "entries": [
+        { "doc": "The surface texture was not acquired because the window is occluded.\n", "name": "occluded", "value": 196609 }
+      ]
+    },
+    {
+      "doc": "Addressing mode for texture sampling, extended by wgpu-native.\n",
+      "name": "address_mode",
+      "entries": [
+        { "doc": "Clamp to border color. Requires WGPUNativeFeature_AddressModeClampToBorder.\n", "name": "clamp_to_border", "value": 4 }
+      ]
+    },
+    {
+      "doc": "Texture format, extended by wgpu-native with YUV formats.\n",
+      "name": "texture_format",
+      "entries": [
+        { "doc": "YUV 4:2:0 chroma subsampled format (NV12).\n", "name": "NV12", "value": 196615 },
+        { "doc": "YUV 4:2:0 with 10 bits from 16-bit channels (P010).\n", "name": "P010", "value": 196616 }
+      ]
+    },
+    {
+      "doc": "Query type, extended by wgpu-native.\n",
+      "name": "query_type",
+      "entries": [
+        { "doc": "Pipeline statistics query. Requires WGPUNativeFeature_PipelineStatisticsQuery.\n", "name": "pipeline_statistics", "value": 196608 }
+      ]
+    },
+    {
+      "doc": "Logging level for wgpu-native diagnostic messages.\n",
+      "name": "log_level",
+      "entries": [
+        { "doc": "Logging disabled.\n", "name": "off", "value": 0 },
+        { "doc": "Only error messages.\n", "name": "error", "value": 1 },
+        { "doc": "Errors and warnings.\n", "name": "warn", "value": 2 },
+        { "doc": "Errors, warnings, and informational messages.\n", "name": "info", "value": 3 },
+        { "doc": "Errors, warnings, informational, and debug messages.\n", "name": "debug", "value": 4 },
+        { "doc": "All messages, including very verbose trace-level output.\n", "name": "trace", "value": 5 }
+      ]
+    },
+    {
+      "doc": "Selects the DX12 shader compiler.\n",
+      "name": "dx12_compiler",
+      "entries": [
+        { "doc": "No compiler selected.\n", "name": "undefined", "value": 0 },
+        { "doc": "Use FXC (D3DCompile). Old and slow but requires no additional DLLs.\n", "name": "fxc", "value": 1 },
+        { "doc": "Use DXC (DirectX Shader Compiler). Requires dxcompiler.dll.\n", "name": "dxc", "value": 2 }
+      ]
+    },
+    {
+      "doc": "Selects the OpenGL ES 3 minor version to request.\n",
+      "name": "gles3_minor_version",
+      "entries": [
+        { "doc": "Automatically select the best available version.\n", "name": "automatic", "value": 0 },
+        { "doc": "Request an ES 3.0 context.\n", "name": "version0", "value": 1 },
+        { "doc": "Request an ES 3.1 context.\n", "name": "version1", "value": 2 },
+        { "doc": "Request an ES 3.2 context.\n", "name": "version2", "value": 3 }
+      ]
+    },
+    {
+      "doc": "Names of pipeline statistics that can be queried.\n",
+      "name": "pipeline_statistic_name",
+      "entries": [
+        { "doc": "Number of vertex shader invocations.\n", "name": "vertex_shader_invocations", "value": 0 },
+        { "doc": "Number of clipper invocations (triangles output by vertex shader).\n", "name": "clipper_invocations", "value": 1 },
+        { "doc": "Number of primitives not culled by the clipper.\n", "name": "clipper_primitives_out", "value": 2 },
+        { "doc": "Number of fragment shader invocations.\n", "name": "fragment_shader_invocations", "value": 3 },
+        { "doc": "Number of compute shader invocations.\n", "name": "compute_shader_invocations", "value": 4 }
+      ]
+    },
+    {
+      "doc": "Maximum HLSL shader model version for DXC.\n",
+      "name": "dxc_max_shader_model",
+      "entries": [
+        { "doc": "Shader Model 6.0.\n", "name": "v6_0", "value": 0 },
+        { "doc": "Shader Model 6.1.\n", "name": "v6_1", "value": 1 },
+        { "doc": "Shader Model 6.2.\n", "name": "v6_2", "value": 2 },
+        { "doc": "Shader Model 6.3.\n", "name": "v6_3", "value": 3 },
+        { "doc": "Shader Model 6.4.\n", "name": "v6_4", "value": 4 },
+        { "doc": "Shader Model 6.5.\n", "name": "v6_5", "value": 5 },
+        { "doc": "Shader Model 6.6.\n", "name": "v6_6", "value": 6 },
+        { "doc": "Shader Model 6.7.\n", "name": "v6_7", "value": 7 }
+      ]
+    },
+    {
+      "doc": "Controls OpenGL fence synchronization behavior.\n",
+      "name": "GL_fence_behaviour",
+      "entries": [
+        { "doc": "Normal fence behavior.\n", "name": "normal", "value": 0 },
+        { "doc": "Fences always report completion immediately.\n", "name": "auto_finish", "value": 1 }
+      ]
+    },
+    {
+      "doc": "Selects the DX12 swapchain kind.\n",
+      "name": "dx12_swapchain_kind",
+      "entries": [
+        { "doc": "No swapchain kind selected.\n", "name": "undefined", "value": 0 },
+        { "doc": "DXGI swapchain from HWND. No transparency, better tooling support.\n", "name": "dxgi_from_hwnd", "value": 1 },
+        { "doc": "DXGI swapchain from DirectComposition visual. Supports transparency.\n", "name": "dxgi_from_visual", "value": 2 }
+      ]
+    },
+    {
+      "doc": "Discriminant for WGPUNativeDisplayHandle identifying the platform display connection.\n",
+      "name": "native_display_handle_type",
+      "entries": [
+        { "doc": "No display handle provided.\n", "name": "none", "value": 0 },
+        { "doc": "X11 display via Xlib.\n", "name": "xlib", "value": 1 },
+        { "doc": "X11 display via XCB.\n", "name": "xcb", "value": 2 },
+        { "doc": "Wayland display.\n", "name": "wayland", "value": 3 }
+      ]
+    },
+    {
+      "doc": "Controls how polygons are rasterized.\n",
+      "name": "polygon_mode",
+      "entries": [
+        { "doc": "Fill polygons (default).\n", "name": "fill", "value": 0 },
+        { "doc": "Draw polygons as lines (wireframe). Requires PolygonModeLine.\n", "name": "line", "value": 1 },
+        { "doc": "Draw polygons as points. Requires PolygonModePoint.\n", "name": "point", "value": 2 }
+      ]
+    },
+    {
+      "doc": "Border color for clamp-to-border address mode.\n",
+      "name": "sampler_border_color",
+      "entries": [
+        { "doc": "No border color specified.\n", "name": "undefined", "value": 0 },
+        { "doc": "Transparent black (0,0,0,0).\n", "name": "transparent_black", "value": 1 },
+        { "doc": "Opaque black (0,0,0,1).\n", "name": "opaque_black", "value": 2 },
+        { "doc": "Opaque white (1,1,1,1).\n", "name": "opaque_white", "value": 3 },
+        { "doc": "Zero (0,0,0,0).\n", "name": "zero", "value": 4 }
+      ]
+    }
+  ],
+  "bitflags": [
+    {
+      "doc": "Bitflags selecting which graphics backends the instance should enable.\n",
+      "name": "instance_backend",
+      "entries": [
+        { "doc": "All backends (default when zero-initialized).\n", "name": "all" },
+        { "doc": "Vulkan backend.\n", "name": "vulkan", "value": 1 },
+        { "doc": "OpenGL / OpenGL ES backend.\n", "name": "GL", "value": 2 },
+        { "doc": "Metal backend.\n", "name": "metal", "value": 4 },
+        { "doc": "Direct3D 12 backend.\n", "name": "DX12", "value": 8 },
+        { "doc": "Browser WebGPU backend.\n", "name": "browser_WebGPU", "value": 32 },
+        { "doc": "Primary backends: Vulkan, Metal, DX12, BrowserWebGPU.\n", "name": "primary", "value": 45 },
+        { "doc": "Secondary backends: GL.\n", "name": "secondary", "value": 2 }
+      ]
+    },
+    {
+      "doc": "Bitflags controlling instance debugging and validation behavior.\n",
+      "name": "instance_flag",
+      "entries": [
+        { "doc": "No flags set.\n", "name": "empty" },
+        { "doc": "Generate debug information in shaders and objects.\n", "name": "debug" },
+        { "doc": "Enable validation in the backend API.\n", "name": "validation" },
+        { "doc": "Don't pass labels to the backend API.\n", "name": "discard_hal_labels" },
+        { "doc": "Expose non-compliant adapters.\n", "name": "allow_underlying_noncompliant_adapter" },
+        { "doc": "Enable GPU-based validation. Implies validation.\n", "name": "GPU_based_validation" },
+        { "doc": "Validate indirect buffer content prior to issuing draws/dispatches.\n", "name": "validation_indirect_call" },
+        { "doc": "Enable automatic timestamp normalization.\n", "name": "automatic_timestamp_normalization" },
+        { "doc": "Use default flags for the current build configuration.\n", "name": "default", "value": 16777216 },
+        { "doc": "Convenience alias enabling debug and validation.\n", "name": "debugging", "value": 33554432 },
+        { "doc": "Convenience alias enabling debug, validation, and GPU-based validation.\n", "name": "advanced_debugging", "value": 67108864 },
+        { "doc": "Modify flags based on environment variables.\n", "name": "with_env", "value": 134217728 }
+      ]
+    },
+    {
+      "doc": "Describes how shader bound checks should be performed.\n",
+      "name": "shader_runtime_checks",
+      "entries": [
+        { "doc": "No runtime checks.\n", "name": "none" },
+        { "doc": "Enforce bounds checks in shaders, even if the driver doesn't support it natively.\n", "name": "bounds_checks" },
+        { "doc": "If not set, the caller must ensure shaders contain no infinite loops.\n", "name": "force_loop_bounding" },
+        { "doc": "If not set, ray query functions must obey initialization rules.\n", "name": "ray_query_initialization_tracking" },
+        { "doc": "If not set, task shaders won't validate mesh shader grid limits.\n", "name": "task_shader_dispatch_tracking" },
+        { "doc": "If not set, mesh shaders won't clamp output vertex indices.\n", "name": "mesh_shader_primitive_indices_clamp" }
+      ]
+    }
+  ],
+  "structs": [
+    {
+      "doc": "Xlib display connection data.\n",
+      "name": "xlib_display_handle",
+      "type": "standalone",
+      "members": [
+        { "doc": "Pointer to the X11 Display. Must not be NULL.\n", "name": "display", "type": "c_void" },
+        { "doc": "X11 screen number.\n", "name": "screen", "type": "int32" }
+      ]
+    },
+    {
+      "doc": "XCB display connection data.\n",
+      "name": "xcb_display_handle",
+      "type": "standalone",
+      "members": [
+        { "doc": "Pointer to the XCB connection. Must not be NULL.\n", "name": "connection", "type": "c_void" },
+        { "doc": "X11 screen number.\n", "name": "screen", "type": "int32" }
+      ]
+    },
+    {
+      "doc": "Wayland display connection data.\n",
+      "name": "wayland_display_handle",
+      "type": "standalone",
+      "members": [
+        { "doc": "Pointer to the Wayland display. Must not be NULL.\n", "name": "display", "type": "c_void" }
+      ]
+    },
+    {
+      "doc": "Union of platform display connection data for WGPUNativeDisplayHandle.\n",
+      "name": "native_display_handle_data",
+      "type": "union",
+      "members": [
+        { "doc": "Xlib display handle.\n", "name": "xlib", "type": "struct.xlib_display_handle" },
+        { "doc": "XCB display handle.\n", "name": "xcb", "type": "struct.xcb_display_handle" },
+        { "doc": "Wayland display handle.\n", "name": "wayland", "type": "struct.wayland_display_handle" }
+      ]
+    },
+    {
+      "doc": "Platform display connection, passed as a field of WGPUInstanceExtras.\n",
+      "name": "native_display_handle",
+      "type": "standalone",
+      "members": [
+        { "doc": "Identifies which variant is active.\n", "name": "type", "type": "enum.native_display_handle_type", "default": "none" },
+        { "doc": "The active display handle data.\n", "name": "data", "type": "struct.native_display_handle_data", "default": "zero" }
+      ]
+    },
+    {
+      "doc": "Native-specific instance configuration, chained in WGPUInstanceDescriptor.\n",
+      "name": "instance_extras",
+      "type": "extension",
+      "extends": ["instance_descriptor"],
+      "members": [
+        { "doc": "Which backends to enable. Zero enables all backends.\n", "name": "backends", "type": "bitflag.instance_backend" },
+        { "doc": "Flags controlling debug/validation behavior.\n", "name": "flags", "type": "bitflag.instance_flag" },
+        { "doc": "Which DX12 shader compiler to use. Ignored on non-DX12.\n", "name": "dx12_shader_compiler", "type": "enum.dx12_compiler" },
+        { "doc": "Which OpenGL ES 3 minor version to request. Ignored on non-GL.\n", "name": "gles3_minor_version", "type": "enum.gles3_minor_version", "default": "automatic" },
+        { "doc": "Controls OpenGL fence synchronization. Ignored on non-GL.\n", "name": "gl_fence_behaviour", "type": "enum.GL_fence_behaviour", "default": "normal" },
+        { "doc": "Path to dxcompiler.dll for DXC. Empty means search system PATH.\n", "name": "dxc_path", "type": "nullable_string" },
+        { "doc": "Maximum HLSL shader model for DXC.\n", "name": "dxc_max_shader_model", "type": "enum.dxc_max_shader_model", "default": "v6_0" },
+        { "doc": "DX12 swapchain kind. Ignored on non-DX12.\n", "name": "dx12_presentation_system", "type": "enum.dx12_swapchain_kind" },
+        { "doc": "Budget for device creation.\n", "name": "budget_for_device_creation", "type": "u8", "pointer": "immutable", "optional": true },
+        { "doc": "Budget for device loss.\n", "name": "budget_for_device_loss", "type": "u8", "pointer": "immutable", "optional": true },
+        { "doc": "Platform display connection.\n", "name": "display_handle", "type": "struct.native_display_handle", "default": "zero" }
+      ]
+    },
+    {
+      "doc": "Native-specific device configuration, chained in WGPUDeviceDescriptor.\n",
+      "name": "device_extras",
+      "type": "extension",
+      "extends": ["device_descriptor"],
+      "members": [
+        { "doc": "File system path for API trace output. Empty disables tracing.\n", "name": "trace_path", "type": "nullable_string" }
+      ]
+    },
+    {
+      "doc": "Native-specific limits, chained in WGPULimits.\n",
+      "name": "native_limits",
+      "type": "extension",
+      "extends": ["limits"],
+      "members": [
+        { "doc": "Maximum number of live non-sampler bindings. Default 1,000,000. D3D12 only.\n", "name": "max_non_sampler_bindings", "type": "uint32", "default": "constant.limit_u32_undefined" },
+        { "doc": "Maximum resources in binding arrays per shader stage.\n", "name": "max_binding_array_elements_per_shader_stage", "type": "uint32", "default": "constant.limit_u32_undefined" },
+        { "doc": "Maximum samplers in binding arrays per shader stage.\n", "name": "max_binding_array_sampler_elements_per_shader_stage", "type": "uint32", "default": "constant.limit_u32_undefined" },
+        { "doc": "Maximum number of views in multiview rendering.\n", "name": "max_multiview_view_count", "type": "uint32", "default": "constant.limit_u32_undefined" }
+      ]
+    },
+    {
+      "doc": "A preprocessor macro definition for GLSL shader compilation.\n",
+      "name": "shader_define",
+      "type": "standalone",
+      "members": [
+        { "doc": "The macro name.\n", "name": "name", "type": "nullable_string" },
+        { "doc": "The macro value (e.g. \"1\").\n", "name": "value", "type": "nullable_string" }
+      ]
+    },
+    {
+      "doc": "GLSL shader source, chained in WGPUShaderModuleDescriptor.\n",
+      "name": "shader_source_GLSL",
+      "type": "extension",
+      "extends": ["shader_module_descriptor"],
+      "members": [
+        { "doc": "The shader stage this GLSL source targets.\n", "name": "stage", "type": "bitflag.shader_stage" },
+        { "doc": "GLSL source code.\n", "name": "code", "type": "nullable_string" },
+        { "doc": "Number of entries in defines.\n", "name": "define_count", "type": "uint32" },
+        { "doc": "Array of preprocessor definitions.\n", "name": "defines", "type": "struct.shader_define", "pointer": "immutable", "optional": true }
+      ]
+    },
+    {
+      "doc": "Descriptor for creating a shader module from SPIR-V.\n",
+      "name": "shader_module_descriptor_SpirV",
+      "type": "standalone",
+      "members": [
+        { "doc": "Label for the shader module.\n", "name": "label", "type": "string_with_default_empty" },
+        { "doc": "Number of 32-bit words in source.\n", "name": "source_size", "type": "uint32" },
+        { "doc": "SPIR-V source code as 32-bit words.\n", "name": "source", "type": "uint32", "pointer": "immutable", "optional": true }
+      ]
+    },
+    {
+      "doc": "Registry allocation statistics.\n",
+      "name": "registry_report",
+      "type": "standalone",
+      "members": [
+        { "doc": "Number of allocated objects.\n", "name": "num_allocated", "type": "usize" },
+        { "doc": "Number of objects kept from user.\n", "name": "num_kept_from_user", "type": "usize" },
+        { "doc": "Number of objects released from user.\n", "name": "num_released_from_user", "type": "usize" },
+        { "doc": "Element size.\n", "name": "element_size", "type": "usize" }
+      ]
+    },
+    {
+      "doc": "Hub allocation statistics grouped by resource type.\n",
+      "name": "hub_report",
+      "type": "standalone",
+      "members": [
+        { "doc": "", "name": "adapters", "type": "struct.registry_report" },
+        { "doc": "", "name": "devices", "type": "struct.registry_report" },
+        { "doc": "", "name": "queues", "type": "struct.registry_report" },
+        { "doc": "", "name": "pipeline_layouts", "type": "struct.registry_report" },
+        { "doc": "", "name": "shader_modules", "type": "struct.registry_report" },
+        { "doc": "", "name": "bind_group_layouts", "type": "struct.registry_report" },
+        { "doc": "", "name": "bind_groups", "type": "struct.registry_report" },
+        { "doc": "", "name": "command_buffers", "type": "struct.registry_report" },
+        { "doc": "", "name": "render_bundles", "type": "struct.registry_report" },
+        { "doc": "", "name": "render_pipelines", "type": "struct.registry_report" },
+        { "doc": "", "name": "compute_pipelines", "type": "struct.registry_report" },
+        { "doc": "", "name": "pipeline_caches", "type": "struct.registry_report" },
+        { "doc": "", "name": "query_sets", "type": "struct.registry_report" },
+        { "doc": "", "name": "buffers", "type": "struct.registry_report" },
+        { "doc": "", "name": "textures", "type": "struct.registry_report" },
+        { "doc": "", "name": "texture_views", "type": "struct.registry_report" },
+        { "doc": "", "name": "samplers", "type": "struct.registry_report" }
+      ]
+    },
+    {
+      "doc": "Global allocation statistics.\n",
+      "name": "global_report",
+      "type": "standalone",
+      "members": [
+        { "doc": "", "name": "surfaces", "type": "struct.registry_report" },
+        { "doc": "Statistics for all other resource types, grouped by backend hub.\n", "name": "hub", "type": "struct.hub_report" }
+      ]
+    },
+    {
+      "doc": "Options for enumerating adapters.\n",
+      "name": "instance_enumerate_adapter_options",
+      "type": "extensible",
+      "members": [
+        { "doc": "Which backends to enumerate.\n", "name": "backends", "type": "bitflag.instance_backend" }
+      ]
+    },
+    {
+      "doc": "Extra bind group entry resources, chained in WGPUBindGroupEntry.\n",
+      "name": "bind_group_entry_extras",
+      "type": "extension",
+      "extends": ["bind_group_entry"],
+      "members": [
+        { "doc": "Array of buffer bindings.\n", "name": "buffers", "type": "object.buffer", "pointer": "immutable", "optional": true },
+        { "doc": "Number of buffer bindings.\n", "name": "buffer_count", "type": "usize" },
+        { "doc": "Array of sampler bindings.\n", "name": "samplers", "type": "object.sampler", "pointer": "immutable", "optional": true },
+        { "doc": "Number of sampler bindings.\n", "name": "sampler_count", "type": "usize" },
+        { "doc": "Array of texture view bindings.\n", "name": "texture_views", "type": "object.texture_view", "pointer": "immutable", "optional": true },
+        { "doc": "Number of texture view bindings.\n", "name": "texture_view_count", "type": "usize" }
+      ]
+    },
+    {
+      "doc": "Extra bind group layout entry data, chained in WGPUBindGroupLayoutEntry.\n",
+      "name": "bind_group_layout_entry_extras",
+      "type": "extension",
+      "extends": ["bind_group_layout_entry"],
+      "members": [
+        { "doc": "Number of resources in this binding array slot.\n", "name": "count", "type": "uint32" }
+      ]
+    },
+    {
+      "doc": "Extra query set descriptor data, chained in WGPUQuerySetDescriptor.\n",
+      "name": "query_set_descriptor_extras",
+      "type": "extension",
+      "extends": ["query_set_descriptor"],
+      "members": [
+        { "doc": "Array of pipeline statistics to query.\n", "name": "pipeline_statistics", "type": "enum.pipeline_statistic_name", "pointer": "immutable", "optional": true },
+        { "doc": "Number of pipeline statistics.\n", "name": "pipeline_statistic_count", "type": "usize" }
+      ]
+    },
+    {
+      "doc": "Extra surface configuration, chained in WGPUSurfaceConfiguration.\n",
+      "name": "surface_configuration_extras",
+      "type": "extension",
+      "extends": ["surface_configuration"],
+      "members": [
+        { "doc": "Desired maximum number of frames in flight.\n", "name": "desired_maximum_frame_latency", "type": "uint32" }
+      ]
+    },
+    {
+      "doc": "Chained in WGPUSurfaceDescriptor to wrap a WinUI SwapChainPanel.\n",
+      "name": "surface_source_swap_chain_panel",
+      "type": "extension",
+      "extends": ["surface_descriptor"],
+      "members": [
+        { "doc": "Pointer to the ISwapChainPanelNative interface.\n", "name": "panel_native", "type": "c_void" }
+      ]
+    },
+    {
+      "doc": "Extra primitive state, chained in WGPUPrimitiveState.\n",
+      "name": "primitive_state_extras",
+      "type": "extension",
+      "extends": ["primitive_state"],
+      "members": [
+        { "doc": "Controls polygon rasterization mode. Defaults to fill.\n", "name": "polygon_mode", "type": "enum.polygon_mode", "default": "fill" },
+        { "doc": "If true, enables conservative overestimation rasterization.\n", "name": "conservative", "type": "bool" }
+      ]
+    },
+    {
+      "doc": "Subresource range for texture operations.\n",
+      "name": "image_subresource_range",
+      "type": "standalone",
+      "members": [
+        { "doc": "Which aspect of the texture.\n", "name": "aspect", "type": "enum.texture_aspect" },
+        { "doc": "Base mip level.\n", "name": "base_mip_level", "type": "uint32" },
+        { "doc": "Number of mip levels.\n", "name": "mip_level_count", "type": "uint32" },
+        { "doc": "Base array layer.\n", "name": "base_array_layer", "type": "uint32" },
+        { "doc": "Number of array layers.\n", "name": "array_layer_count", "type": "uint32" }
+      ]
+    },
+    {
+      "doc": "Extra sampler descriptor data, chained in WGPUSamplerDescriptor.\n",
+      "name": "sampler_descriptor_extras",
+      "type": "extension",
+      "extends": ["sampler_descriptor"],
+      "members": [
+        { "doc": "Border color for clamp-to-border mode.\n", "name": "sampler_border_color", "type": "enum.sampler_border_color" }
+      ]
+    }
+  ],
+  "callbacks": [
+    {
+      "doc": "Callback for receiving wgpu-native log messages.\n",
+      "name": "log",
+      "style": "raw",
+      "args": [
+        { "doc": "Log level of this message.\n", "name": "level", "type": "enum.log_level" },
+        { "doc": "The log message.\n", "name": "message", "type": "nullable_string" }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "doc": "Generate a report of allocated resources.\n",
+      "name": "generate_report",
+      "args": [
+        { "doc": "Instance to query.\n", "name": "instance", "type": "object.instance" },
+        { "doc": "Output report struct.\n", "name": "report", "type": "struct.global_report", "pointer": "mutable" }
+      ]
+    },
+    {
+      "doc": "Set the global log callback and userdata.\n",
+      "name": "set_log_callback",
+      "args": [
+        { "doc": "The callback to call for each log message.\n", "name": "callback", "type": "raw_callback.log" },
+        { "doc": "Userdata passed to the callback.\n", "name": "userdata", "type": "c_void", "optional": true }
+      ]
+    },
+    {
+      "doc": "Set the global log level.\n",
+      "name": "set_log_level",
+      "args": [
+        { "doc": "Minimum level of messages to log.\n", "name": "level", "type": "enum.log_level" }
+      ]
+    },
+    {
+      "doc": "Get the wgpu-native version.\n",
+      "name": "get_version",
+      "returns": { "doc": "The version number.\n", "type": "uint32" }
+    }
+  ],
+  "objects": [
+    {
+      "name": "instance",
+      "methods": [
+        {
+          "doc": "Enumerate available adapters.\nIf adapters is null, returns the count. Otherwise fills the array and returns the count.\n",
+          "name": "enumerate_adapters",
+          "args": [
+            { "doc": "Options for filtering adapters.\n", "name": "options", "type": "struct.instance_enumerate_adapter_options", "pointer": "immutable", "optional": true },
+            { "doc": "Output array of adapters, or null to just get the count.\n", "name": "adapters", "type": "object.adapter", "pointer": "mutable" }
+          ],
+          "returns": { "doc": "Number of adapters.\n", "type": "usize" }
+        }
+      ]
+    },
+    {
+      "name": "device",
+      "methods": [
+        {
+          "doc": "Poll the device for completion. Returns true if the queue is empty.\n",
+          "name": "poll",
+          "args": [
+            { "doc": "If true, wait until a submission has finished.\n", "name": "wait", "type": "bool" },
+            { "doc": "Specific submission to wait for, or null for any.\n", "name": "submission_index", "type": "uint64", "pointer": "immutable", "optional": true }
+          ],
+          "returns": { "doc": "True if the queue is empty.\n", "type": "bool" }
+        },
+        {
+          "doc": "Create a shader module from SPIR-V.\n",
+          "name": "create_shader_module_SpirV",
+          "args": [
+            { "doc": "SPIR-V descriptor.\n", "name": "descriptor", "type": "struct.shader_module_descriptor_SpirV", "pointer": "immutable" }
+          ],
+          "returns": { "doc": "The created shader module.\n", "type": "object.shader_module", "passed_with_ownership": true }
+        },
+        {
+          "doc": "Returns the native Metal device as an opaque pointer, or null if unavailable.\n",
+          "name": "get_native_metal_device",
+          "returns": { "doc": "Opaque Metal device pointer.\n", "type": "c_void" }
+        },
+        {
+          "doc": "Start graphics debugger capture. Returns true on success.\n",
+          "name": "start_graphics_debugger_capture",
+          "returns": { "doc": "True if capture started successfully.\n", "type": "bool" }
+        },
+        {
+          "doc": "Stop graphics debugger capture.\n",
+          "name": "stop_graphics_debugger_capture"
+        },
+        {
+          "doc": "Create a trusted shader module with explicit runtime checks.\n",
+          "name": "create_shader_module_trusted",
+          "args": [
+            { "doc": "Shader module descriptor.\n", "name": "descriptor", "type": "struct.shader_module_descriptor", "pointer": "immutable" },
+            { "doc": "Runtime checks to apply.\n", "name": "runtime_checks", "type": "bitflag.shader_runtime_checks" }
+          ],
+          "returns": { "doc": "The created shader module.\n", "type": "object.shader_module", "passed_with_ownership": true }
+        }
+      ]
+    },
+    {
+      "name": "queue",
+      "methods": [
+        {
+          "doc": "Submit command buffers and return a submission index for polling.\n",
+          "name": "submit_for_index",
+          "args": [
+            { "doc": "Command buffers to submit.\n", "name": "commands", "type": "array<object.command_buffer>", "pointer": "immutable" }
+          ],
+          "returns": { "doc": "Submission index for use with devicePoll.\n", "type": "uint64" }
+        },
+        {
+          "doc": "Get the timestamp period in nanoseconds.\n",
+          "name": "get_timestamp_period",
+          "returns": { "doc": "Timestamp period in nanoseconds.\n", "type": "float32" }
+        },
+        {
+          "doc": "Returns the native Metal command queue as an opaque pointer, or null if unavailable.\n",
+          "name": "get_native_metal_command_queue",
+          "returns": { "doc": "Opaque Metal command queue pointer.\n", "type": "c_void" }
+        }
+      ]
+    },
+    {
+      "name": "texture",
+      "methods": [
+        {
+          "doc": "Returns the native Metal texture as an opaque pointer, or null if unavailable.\n",
+          "name": "get_native_metal_texture",
+          "returns": { "doc": "Opaque Metal texture pointer.\n", "type": "c_void" }
+        }
+      ]
+    },
+    {
+      "name": "render_pass_encoder",
+      "methods": [
+        {
+          "doc": "Multi-draw indirect.\n",
+          "name": "multi_draw_indirect",
+          "args": [
+            { "doc": "Indirect buffer.\n", "name": "buffer", "type": "object.buffer" },
+            { "doc": "Offset into the indirect buffer.\n", "name": "offset", "type": "uint64" },
+            { "doc": "Number of draws.\n", "name": "count", "type": "uint32" }
+          ]
+        },
+        {
+          "doc": "Multi-draw indexed indirect.\n",
+          "name": "multi_draw_indexed_indirect",
+          "args": [
+            { "doc": "Indirect buffer.\n", "name": "buffer", "type": "object.buffer" },
+            { "doc": "Offset into the indirect buffer.\n", "name": "offset", "type": "uint64" },
+            { "doc": "Number of draws.\n", "name": "count", "type": "uint32" }
+          ]
+        },
+        {
+          "doc": "Multi-draw indirect count.\n",
+          "name": "multi_draw_indirect_count",
+          "args": [
+            { "doc": "Indirect buffer.\n", "name": "buffer", "type": "object.buffer" },
+            { "doc": "Offset into the indirect buffer.\n", "name": "offset", "type": "uint64" },
+            { "doc": "Count buffer.\n", "name": "count_buffer", "type": "object.buffer" },
+            { "doc": "Offset into the count buffer.\n", "name": "count_buffer_offset", "type": "uint64" },
+            { "doc": "Maximum draw count.\n", "name": "max_count", "type": "uint32" }
+          ]
+        },
+        {
+          "doc": "Multi-draw indexed indirect count.\n",
+          "name": "multi_draw_indexed_indirect_count",
+          "args": [
+            { "doc": "Indirect buffer.\n", "name": "buffer", "type": "object.buffer" },
+            { "doc": "Offset into the indirect buffer.\n", "name": "offset", "type": "uint64" },
+            { "doc": "Count buffer.\n", "name": "count_buffer", "type": "object.buffer" },
+            { "doc": "Offset into the count buffer.\n", "name": "count_buffer_offset", "type": "uint64" },
+            { "doc": "Maximum draw count.\n", "name": "max_count", "type": "uint32" }
+          ]
+        },
+        {
+          "doc": "Begin a pipeline statistics query.\n",
+          "name": "begin_pipeline_statistics_query",
+          "args": [
+            { "doc": "Query set.\n", "name": "query_set", "type": "object.query_set" },
+            { "doc": "Query index.\n", "name": "query_index", "type": "uint32" }
+          ]
+        },
+        {
+          "doc": "End the current pipeline statistics query.\n",
+          "name": "end_pipeline_statistics_query"
+        },
+        {
+          "doc": "Write a timestamp into a query set.\n",
+          "name": "write_timestamp",
+          "args": [
+            { "doc": "Query set.\n", "name": "query_set", "type": "object.query_set" },
+            { "doc": "Query index.\n", "name": "query_index", "type": "uint32" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compute_pass_encoder",
+      "methods": [
+        {
+          "doc": "Begin a pipeline statistics query.\n",
+          "name": "begin_pipeline_statistics_query",
+          "args": [
+            { "doc": "Query set.\n", "name": "query_set", "type": "object.query_set" },
+            { "doc": "Query index.\n", "name": "query_index", "type": "uint32" }
+          ]
+        },
+        {
+          "doc": "End the current pipeline statistics query.\n",
+          "name": "end_pipeline_statistics_query"
+        },
+        {
+          "doc": "Write a timestamp into a query set.\n",
+          "name": "write_timestamp",
+          "args": [
+            { "doc": "Query set.\n", "name": "query_set", "type": "object.query_set" },
+            { "doc": "Query index.\n", "name": "query_index", "type": "uint32" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "command_encoder",
+      "methods": [
+        {
+          "doc": "Clear a texture to zero.\n",
+          "name": "clear_texture",
+          "args": [
+            { "doc": "Texture to clear.\n", "name": "texture", "type": "object.texture" },
+            { "doc": "Subresource range to clear.\n", "name": "range", "type": "struct.image_subresource_range", "pointer": "immutable", "optional": true }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -152,9 +152,6 @@ fn emitEnums(e: *Emit) !void {
         var idx: usize = 0;
         for (en.entries) |me| {
             if (me) |en_entry| {
-                // Implicit values are positional, so an explicit value that skips
-                // ahead would silently misnumber every entry after it.
-                if (en_entry.value) |v| std.debug.assert(v == idx);
                 try e.w.doc(en_entry.doc);
                 try e.w.line("{s} = 0x{x:0>8},", .{ e.entry(en_entry.name), en_entry.value orelse idx });
             }
@@ -182,8 +179,12 @@ fn emitCallbacks(e: *Emit) !void {
             try e.w.doc(arg.doc);
             try e.w.line("{s}: {s},", .{ e.snake(arg.name), e.typeStr(e.cbArgType(arg)) });
         };
-        try e.w.line("userdata1: ?*anyopaque,", .{});
-        try e.w.line("userdata2: ?*anyopaque,", .{});
+        if (std.mem.eql(u8, cb.style, "raw")) {
+            try e.w.line("userdata: ?*anyopaque,", .{});
+        } else {
+            try e.w.line("userdata1: ?*anyopaque,", .{});
+            try e.w.line("userdata2: ?*anyopaque,", .{});
+        }
         try e.w.close(") callconv(.c) void;", .{});
         try e.w.blank();
     }
@@ -191,6 +192,7 @@ fn emitCallbacks(e: *Emit) !void {
 
 fn emitCallbackInfos(e: *Emit) !void {
     for (e.s.callbacks) |cb| {
+        if (std.mem.eql(u8, cb.style, "raw")) continue;
         try e.w.doc(cb.doc);
         try e.w.open("pub const {s}CallbackInfo = extern struct {{", .{e.pascal(cb.name)});
         try e.w.line("next_in_chain: ?*ChainedStruct = null,", .{});
@@ -207,6 +209,18 @@ fn emitCallbackInfos(e: *Emit) !void {
 fn emitStructs(e: *Emit) !void {
     for (e.s.structs) |st| {
         try e.w.doc(st.doc);
+        if (st.type == .@"union") {
+            try e.w.open("pub const {s} = extern union {{", .{e.pascal(st.name)});
+            if (st.members) |members| for (members) |m| {
+                try e.w.doc(m.doc);
+                const ty = e.typeStr(ZigType.resolve(e.a, m.type, m.pointer, m.optional orelse false));
+                try e.w.line("{s}: {s},", .{ e.snake(m.name), ty });
+            };
+            try e.w.close("}};", .{});
+            try e.w.blank();
+            continue;
+        }
+
         try e.w.open("pub const {s} = extern struct {{", .{e.pascal(st.name)});
 
         if (st.type == .extensible or st.type == .extensible_callback_arg) {
@@ -243,10 +257,12 @@ fn emitStructs(e: *Emit) !void {
         }
 
         if (st.type == .extension) if (st.extends) |parents| if (parents.len == 1) {
-            try e.w.blank();
-            try e.w.open("pub fn {s}(self: *const @This()) {s} {{", .{ e.camel(parents[0]), e.pascal(parents[0]) });
-            try e.w.line("return .{{ .next_in_chain = @constCast(&self.chain) }};", .{});
-            try e.w.close("}}", .{});
+            if (e.structFullyDefaulted(parents[0])) {
+                try e.w.blank();
+                try e.w.open("pub fn {s}(self: *const @This()) {s} {{", .{ e.camel(parents[0]), e.pascal(parents[0]) });
+                try e.w.line("return .{{ .next_in_chain = @constCast(&self.chain) }};", .{});
+                try e.w.close("}}", .{});
+            }
         };
 
         try e.w.close("}};", .{});
@@ -563,7 +579,7 @@ fn bitflagDefault(e: *Emit, bitflag_name: []const u8, entry_name: []const u8) ?[
 fn implicitDefault(e: *Emit, ty: Schema.Type) ?[]const u8 {
     return switch (ty) {
         .bool => "Bool.false",
-        .uint16, .uint32, .uint64, .usize, .int16, .int32 => "0",
+        .u8, .uint16, .uint32, .uint64, .usize, .int16, .int32 => "0",
         .float32, .nullable_float32, .float64, .float64_supertype => "0",
         .nullable_string, .string_with_default_empty, .out_string => "String.NULL",
         .bitflag => ".{}",
@@ -573,7 +589,7 @@ fn implicitDefault(e: *Emit, ty: Schema.Type) ?[]const u8 {
             break :blk null;
         },
         .@"struct" => |name| if (e.structFullyDefaulted(name)) ".{}" else null,
-        .callback => ".{}",
+        .callback, .raw_callback => ".{}",
         .object, .c_void => "null",
         .array => null,
     };

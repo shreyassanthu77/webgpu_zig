@@ -63,6 +63,7 @@ pub fn base(a: std.mem.Allocator, ty: Schema.Type) ZigType {
     return switch (ty) {
         .c_void => named("anyopaque"),
         .bool => named("Bool"),
+        .u8 => named("u8"),
         .nullable_string, .string_with_default_empty, .out_string => named("String"),
         .uint16 => named("u16"),
         .uint32 => named("u32"),
@@ -77,6 +78,7 @@ pub fn base(a: std.mem.Allocator, ty: Schema.Type) ZigType {
         .bitflag => |n| named(naming.pascal(a, n)),
         .object => |n| named(naming.pascal(a, n)),
         .callback => |n| named(std.fmt.allocPrint(a, "{s}CallbackInfo", .{naming.pascal(a, n)}) catch @panic("OOM")),
+        .raw_callback => |n| named(std.fmt.allocPrint(a, "{s}Callback", .{naming.pascal(a, n)}) catch @panic("OOM")),
         .array => unreachable, // arrays are lowered as slices/pairs by the caller
     };
 }

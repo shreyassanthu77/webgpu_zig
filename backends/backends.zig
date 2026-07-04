@@ -8,6 +8,27 @@ pub const Backend = enum {
     wgpu_native,
 };
 
+pub fn headerPath(
+    b: *std.Build,
+    backend: Backend,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) ?std.Build.LazyPath {
+    return switch (backend) {
+        .none => null,
+        .wgvk => null,
+        .wgpu_native => wgpu_native.headerPath(b, target, optimize),
+    };
+}
+
+pub fn overlay(b: *std.Build, backend: Backend) ?std.Build.LazyPath {
+    return switch (backend) {
+        .none => null,
+        .wgvk => wgvk.overlay(b),
+        .wgpu_native => wgpu_native.overlay(b),
+    };
+}
+
 pub fn link(
     BuildZig: type,
     b: *std.Build,

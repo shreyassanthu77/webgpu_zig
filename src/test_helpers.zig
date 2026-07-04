@@ -20,7 +20,8 @@ pub fn fnTypeFromCProc(comptime CProc: type) type {
     return switch (@typeInfo(CProc)) {
         .optional => |o| fnTypeFromCProc(o.child),
         .pointer => |p| p.child,
-        else => @compileError("expected C proc typedef to be a function pointer"),
+        .@"fn" => CProc,
+        else => @compileError("expected C proc to be a function, function pointer, or optional function pointer"),
     };
 }
 

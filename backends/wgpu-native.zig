@@ -1,5 +1,21 @@
 const std = @import("std");
 
+pub fn overlay(b: *std.Build) ?std.Build.LazyPath {
+    return b.path("backends/wgpu_native.json");
+}
+
+pub fn headerPath(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) ?std.Build.LazyPath {
+    const dependency_name = getDependencyName(b, target, optimize);
+    if (b.lazyDependency(dependency_name, .{})) |wgpu_native| {
+        return wgpu_native.path("include/webgpu/wgpu.h");
+    }
+    return null;
+}
+
 pub fn link(
     b: *std.Build,
     module: *std.Build.Module,

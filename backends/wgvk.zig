@@ -1,5 +1,10 @@
 const std = @import("std");
 
+pub fn overlay(b: *std.Build) ?std.Build.LazyPath {
+    _ = b;
+    return null;
+}
+
 pub fn link(
     BuildZig: type,
     b: *std.Build,

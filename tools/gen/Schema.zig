@@ -119,6 +119,7 @@ pub const Struct = struct {
         extensible_callback_arg,
         extension,
         standalone,
+        @"union",
     };
 };
 
@@ -196,6 +197,7 @@ pub const Parameter = struct {
 pub const Type = union(enum) {
     c_void,
     bool,
+    u8,
     nullable_string,
     string_with_default_empty,
     out_string,
@@ -215,6 +217,7 @@ pub const Type = union(enum) {
     object: []const u8,
     bitflag: []const u8,
     callback: []const u8,
+    raw_callback: []const u8,
 
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !Type {
         const name_token: std.json.Token = try source.nextAllocMax(allocator, .alloc_if_needed, options.max_value_len.?);
@@ -249,6 +252,8 @@ pub const Type = union(enum) {
             return .{ .bitflag = ty[8..ty.len] };
         } else if (std.mem.startsWith(u8, ty, "callback.")) {
             return .{ .callback = ty[9..ty.len] };
+        } else if (std.mem.startsWith(u8, ty, "raw_callback.")) {
+            return .{ .raw_callback = ty[13..ty.len] };
         } else {
             const Tag = @typeInfo(Type).@"union".tag_type.?;
             const tag: Tag = std.meta.stringToEnum(Tag, ty) orelse {
@@ -262,6 +267,7 @@ pub const Type = union(enum) {
                 .object,
                 .bitflag,
                 .callback,
+                .raw_callback,
                 => unreachable,
                 inline else => |t| @unionInit(Type, @tagName(t), {}),
             };
